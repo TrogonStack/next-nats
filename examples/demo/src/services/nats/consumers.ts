@@ -1,8 +1,7 @@
 import { defineConsumer, ensureStream, getLogger } from "@trogonstack/next-nats";
 import { defineCron } from "@trogonstack/next-nats/cron";
-import { subscribe } from "@trogonstack/next-nats/queue";
-import { DEMO_DLQ, DEMO_QUEUE_GROUP, DEMO_QUEUE_TOPIC, DEMO_STREAM, DEMO_SUBJECT } from "@/constants/demo";
-import { appendQueueLog } from "./demo-log";
+import { startQueueWorker } from "@trogonstack/next-nats/queue";
+import { DEMO_DLQ, DEMO_STREAM, DEMO_SUBJECT } from "@/constants/demo";
 
 await ensureStream({ name: DEMO_STREAM, subjects: [`${DEMO_SUBJECT}.>`, DEMO_DLQ] });
 
@@ -19,22 +18,7 @@ defineConsumer<{ message: string; fail?: boolean }>({
   },
 });
 
-subscribe<{ text: string; fail?: boolean }>(
-  DEMO_QUEUE_TOPIC,
-  DEMO_QUEUE_GROUP,
-  async (payload, meta) => {
-    const failing = payload.fail && meta.deliveryCount < 3;
-    await appendQueueLog({
-      at: new Date().toISOString(),
-      messageId: meta.messageId,
-      text: payload.text,
-      deliveryCount: meta.deliveryCount,
-      outcome: failing ? "failed" : "processed",
-    });
-    if (failing) throw new Error("demo queue failure");
-  },
-  { retry: () => ({ afterSeconds: 2 }) },
-);
+startQueueWorker();
 
 defineCron({
   name: "heartbeat-beater",

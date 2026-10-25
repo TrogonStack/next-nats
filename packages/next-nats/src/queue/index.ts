@@ -1,55 +1,53 @@
 import "server-only";
-import { createQueueClient, type QueueClient } from "./client.js";
-import type {
+
+export {
+  BadRequestError,
+  ConcurrencyCoalescedPendingError,
+  ConsumerDiscoveryError,
+  ConsumerRegistryNotConfiguredError,
+  ForbiddenError,
+  InternalServerError,
+  InvalidLimitError,
+  MessageAlreadyProcessedError,
+  MessageCorruptedError,
+  MessageLockedError,
+  MessageNotAvailableError,
+  MessageNotFoundError,
+  PayloadTooLargeError,
+  QueueEmptyError,
+  TooManyRequestsError,
+  UnauthorizedError,
+} from "./errors.js";
+export { BufferTransport, JsonTransport, StreamTransport, type Transport } from "./transport.js";
+export { CLOUD_EVENT_TYPE_V1BETA, CLOUD_EVENT_TYPE_V2BETA, parseCallback, parseRawCallback } from "./callback.js";
+export { PollingQueueClient, QueueClient, experimental_sendBatch, handleCallback, send, sendBatch } from "./client.js";
+export { registerDevConsumer, startQueueWorker, loadTriggers, readVercelJson, filePathToConsumerGroup, routePathOf } from "./worker.js";
+export type { QueueTrigger, QueueWorker, QueueWorkerOptions, RegisterDevConsumerOptions } from "./worker.js";
+export { configureQueue, type QueueStoreOptions } from "./store.js";
+export type {
+  BaseUrlResolver,
   BatchSendMessage,
+  BatchSendOptions,
   BatchSendResult,
-  ConsumeOptions,
+  CursorFallback,
+  ExperimentalCoalescedReruns,
+  Message,
   MessageHandler,
+  MessageMetadata,
+  ParsedCallbackRequest,
+  ParsedCallbackV1,
+  ParsedCallbackV2,
+  PollingQueueClientOptions,
   QueueClientOptions,
-  QueueSubscription,
+  ReceiveBatchOptions,
+  ReceiveByIdOptions,
   ReceiveOptions,
   ReceiveResult,
+  RetryDirective,
+  RetryHandler,
   SendOptions,
   SendResult,
+  SendTelemetryOptions,
+  TelemetryOptions,
+  VercelRegion,
 } from "./types.js";
-
-export { createQueueClient, defaultRetryDelaySeconds, type QueueClient } from "./client.js";
-export * from "./types.js";
-
-const KEY = Symbol.for("next-nats.queue.default");
-
-type Holder = { [KEY]?: QueueClient };
-
-export function configureQueue(options: QueueClientOptions): QueueClient {
-  const g = globalThis as Holder;
-  g[KEY] = createQueueClient(options);
-  return g[KEY];
-}
-
-export function defaultQueue(): QueueClient {
-  const g = globalThis as Holder;
-  return (g[KEY] ??= createQueueClient());
-}
-
-export const send = <T = unknown>(topic: string, payload: T, options?: SendOptions): Promise<SendResult> =>
-  defaultQueue().send(topic, payload, options);
-
-export const sendBatch = <T = unknown>(topic: string, messages: readonly BatchSendMessage<T>[]): Promise<BatchSendResult[]> =>
-  defaultQueue().sendBatch(topic, messages);
-
-export const subscribe = <T = unknown>(
-  topic: string,
-  consumerGroup: string,
-  handler: MessageHandler<T>,
-  options?: ConsumeOptions,
-): QueueSubscription => defaultQueue().subscribe(topic, consumerGroup, handler, options);
-
-export const receive = <T = unknown>(
-  topic: string,
-  consumerGroup: string,
-  handler: MessageHandler<T>,
-  options?: ReceiveOptions,
-): Promise<ReceiveResult> => defaultQueue().receive(topic, consumerGroup, handler, options);
-
-export const handleCallback = <T = unknown>(handler: MessageHandler<T>, options?: ReceiveOptions & { consumerGroup?: string }) =>
-  defaultQueue().handleCallback(handler, options);

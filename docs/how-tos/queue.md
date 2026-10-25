@@ -1,6 +1,6 @@
 # Send and handle queue messages
 
-Replace Vercel Queues with a JetStream stream and pull consumers.
+Run the same `@vercel/queue` code on JetStream by importing from `@trogonstack/next-nats/queue`.
 
 ## Send
 
@@ -10,30 +10,70 @@ import { send } from "@trogonstack/next-nats/queue";
 await send("orders", { id: "o_1" }, { idempotencyKey: "o_1", delaySeconds: 10 });
 ```
 
-`sendBatch` sends several messages and reports a result for each.
+`sendBatch` sends several messages and reports `sent` or `failed` for each.
 
-## Handle continuously
-
-Register handlers where workers run, for example in the module loaded by `registerNats`:
+## Handle in a route handler
 
 ```ts
-import { subscribe } from "@trogonstack/next-nats/queue";
+// src/app/api/queue/orders/route.ts
+import { handleCallback } from "@trogonstack/next-nats/queue";
 
-subscribe<{ id: string }>(
-  "orders",
-  "fulfilment",
-  async (order, meta) => {
-    if (meta.deliveryCount < 3) throw new Error("try again");
+export const POST = handleCallback<{ id: string }>(
+  async (order, metadata) => {
+    if (metadata.deliveryCount < 3) throw new Error("try again");
   },
   { retry: () => ({ afterSeconds: 2 }) },
 );
 ```
 
-Replicas that share a consumer group split the messages. A handler that throws is redelivered, and `maxDeliveries` bounds the attempts.
+Declare the trigger in `vercel.json`, exactly as for Vercel:
 
-## Handle on demand
+```json
+{
+  "functions": {
+    "src/app/api/queue/orders/route.ts": {
+      "experimentalTriggers": [{ "type": "queue/v2beta", "topic": "orders", "retryAfterSeconds": 30 }]
+    }
+  }
+}
+```
 
-`receive` pulls a bounded batch and returns `{ ok: false, reason: "empty" }` when there was nothing. `handleCallback` builds a route handler that accepts a `POST` with `{ queueName, consumerGroup }` and drains that queue.
+## Deliver messages to the route
+
+On Vercel the platform calls the route. Self-hosted, start the worker in a module that loads with the server, for example the one imported by `registerNats`:
+
+```ts
+import { startQueueWorker } from "@trogonstack/next-nats/queue";
+
+startQueueWorker();
+```
+
+The worker reads `vercel.json`, derives the consumer group from the file path, and posts each message to the route as a CloudEvent. A non-2xx answer redelivers the message after `retryAfterSeconds`. Set `NATS_QUEUE_CALLBACK_URL` when the route is not reachable at `http://127.0.0.1:$PORT`.
+
+Replicas that share a consumer group split the messages. Every other consumer group gets its own copy.
+
+## Handle in process during development
+
+```ts
+import { QueueClient, registerDevConsumer } from "@trogonstack/next-nats/queue";
+
+const unregister = registerDevConsumer({
+  topic: "orders",
+  client: new QueueClient(),
+  handler: async (order) => console.log(order),
+});
+```
+
+## Pull on demand
+
+```ts
+import { PollingQueueClient } from "@trogonstack/next-nats/queue";
+
+const client = new PollingQueueClient({});
+const result = await client.receive("orders", "batch-job", async (order) => {}, { limit: 5 });
+```
+
+`receive` resolves `{ ok: false, reason: "empty" }` when there was nothing.
 
 ## Consume a plain JetStream subject
 
@@ -57,4 +97,4 @@ defineConsumer<{ message: string }>({
 
 ## Enable workers
 
-Handlers only start when `NATS_WORKERS=true` for the process. See [workers](../explanations/architecture.md#workers).
+`startQueueWorker` and `registerDevConsumer` only start when `NATS_WORKERS=true` for the process. See [workers](../explanations/architecture.md#workers).

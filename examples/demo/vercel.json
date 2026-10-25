@@ -1,3 +1,8 @@
 {
-  "crons": [{ "path": "/api/cron/heartbeat", "schedule": "* * * * *" }]
+  "crons": [{ "path": "/api/cron/heartbeat", "schedule": "* * * * *" }],
+  "functions": {
+    "src/app/api/queue/jobs/route.ts": {
+      "experimentalTriggers": [{ "type": "queue/v2beta", "topic": "demo-jobs", "retryAfterSeconds": 2 }]
+    }
+  }
 }
