@@ -47,7 +47,7 @@ A request is allowed with `Authorization: Bearer <client token>` (or `?token=`),
 | Variable | Meaning | Default |
 | --- | --- | --- |
 | `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL` | Where the route is mounted. Blob URLs and client uploads start here | `/blob` |
-| `BLOB_SECRET` | HMAC secret for client tokens, presigned URLs and callbacks. Accepts the Secret Value Syntax | Random per process |
+| `BLOB_SECRET` | HMAC secret for client tokens, presigned URLs and callbacks. Accepts the Secret Value Syntax | Required when `NODE_ENV=production`, random per process otherwise |
 | `BLOB_READ_WRITE_TOKEN` | Used as the signing secret when `BLOB_SECRET` is unset | none |
 | `NEXT_NATS_BLOB_BUCKET` | Object Store bucket | `next_nats_blob` |
 

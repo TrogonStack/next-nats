@@ -51,7 +51,7 @@ Secret variables accept the plain value or the Secret Value Syntax `secret:[nid]
 | `NEXT_NATS_KV_BUCKET` | Bucket behind `kv` | `kv` |
 | `NEXT_NATS_BLOB_BUCKET` | Object Store bucket for blobs | `next_nats_blob` |
 | `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL` | Blob route mount URL | `/blob` |
-| `BLOB_SECRET`, `BLOB_READ_WRITE_TOKEN` | Blob signing secret, see [Blob](./blob.md) | random per process |
+| `BLOB_SECRET`, `BLOB_READ_WRITE_TOKEN` | Blob signing secret, see [Blob](./blob.md) | required in production, random per process otherwise |
 | `EDGE_CONFIG` | Edge Config connection string, `edge-config:id=<bucket>` | `edge-config:id=` plus `NEXT_NATS_EDGE_CONFIG_BUCKET` |
 | `NEXT_NATS_EDGE_CONFIG_BUCKET` | Bucket used when `EDGE_CONFIG` is unset | `edge-config` |
 

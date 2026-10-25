@@ -1,4 +1,4 @@
-import { getBlobConfig } from "./config.js";
+import { getBlobConfig, getBlobSecret } from "./config.js";
 import { BlobAccessError, BlobClientTokenExpiredError, BlobError } from "./errors.js";
 import { blobUrl } from "./url.js";
 import type {
@@ -76,7 +76,7 @@ export async function generateClientTokenFromReadWriteToken(options: GenerateCli
   const { token: _token, abortSignal: _signal, oidcToken: _oidc, storeId: _store, ...rest } = options;
   if (!rest.pathname) throw new BlobError("pathname is required", { reason: "INVALID_PATHNAME", subject: "/pathname" });
   const payload: DecodedClientTokenPayload = { ...rest, validUntil: rest.validUntil ?? Date.now() + ONE_HOUR };
-  return `${CLIENT_TOKEN_PREFIX}${await seal(payload, getBlobConfig().secret)}`;
+  return `${CLIENT_TOKEN_PREFIX}${await seal(payload, getBlobSecret())}`;
 }
 
 export function getPayloadFromClientToken(clientToken: string): DecodedClientTokenPayload {
@@ -90,13 +90,13 @@ export function getPayloadFromClientToken(clientToken: string): DecodedClientTok
 
 export async function verifyClientToken(clientToken: string, now = Date.now()): Promise<DecodedClientTokenPayload> {
   if (!clientToken.startsWith(CLIENT_TOKEN_PREFIX)) throw new BlobAccessError();
-  const payload = await open<DecodedClientTokenPayload>(clientToken.slice(CLIENT_TOKEN_PREFIX.length), getBlobConfig().secret);
+  const payload = await open<DecodedClientTokenPayload>(clientToken.slice(CLIENT_TOKEN_PREFIX.length), getBlobSecret());
   if (payload.validUntil < now) throw new BlobClientTokenExpiredError();
   return payload;
 }
 
 export function signCallbackBody(body: string): Promise<string> {
-  return hmac(getBlobConfig().secret, `callback:${body}`);
+  return hmac(getBlobSecret(), `callback:${body}`);
 }
 
 export async function verifyCallbackSignature(signature: string, body: string): Promise<boolean> {
@@ -113,7 +113,7 @@ interface DelegationPayload {
 }
 
 function clientSigningTokenFor(delegationToken: string): Promise<string> {
-  return hmac(getBlobConfig().secret, `delegation:${delegationToken}`);
+  return hmac(getBlobSecret(), `delegation:${delegationToken}`);
 }
 
 export async function issueSignedToken(options: IssueSignedTokenOptions): Promise<IssuedSignedToken> {
@@ -126,7 +126,7 @@ export async function issueSignedToken(options: IssueSignedTokenOptions): Promis
     ...(options.allowedContentTypes !== undefined && { allowedContentTypes: options.allowedContentTypes }),
     ...(options.maximumSizeInBytes !== undefined && { maximumSizeInBytes: options.maximumSizeInBytes }),
   };
-  const delegationToken = await seal(payload, getBlobConfig().secret);
+  const delegationToken = await seal(payload, getBlobSecret());
   return { delegationToken, clientSigningToken: await clientSigningTokenFor(delegationToken), validUntil };
 }
 
@@ -208,7 +208,7 @@ export async function verifyPresignedParams(search: URLSearchParams, now = Date.
   const delegationToken = search.get("delegationToken");
   const signature = search.get("signature");
   if (!delegationToken || !signature) throw new BlobAccessError();
-  const secret = getBlobConfig().secret;
+  const secret = getBlobSecret();
   const delegation = await open<DelegationPayload>(delegationToken, secret);
   const params: Record<string, string> = {};
   search.forEach((value, key) => {
