@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Start Redis with its HTTP proxy and run the Redis, KV and ratelimit differential suites"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.config/mise/lib/compose.sh"
+source "$MISE_PROJECT_ROOT/.config/mise/lib/nats.sh"
+compose --profile redis up -d --wait
+export NEXT_NATS_REQUIRE_REDIS=1
+exec pnpm exec vitest run --project shared-redis "$@"
