@@ -7,7 +7,7 @@ export function QueueLog() {
   return (
     <Live<QueueLogLine[]>
       url="/queue/log"
-      render={(lines) =>
+      onRender={(lines) =>
         lines.length === 0 ? (
           <p>No jobs processed yet.</p>
         ) : (

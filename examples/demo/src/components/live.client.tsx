@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-export function Live<T>({ url, render, intervalMs = 1000 }: { url: string; render: (data: T) => React.ReactNode; intervalMs?: number }) {
+export function Live<T>({ url, onRender, intervalMs = 1000 }: { url: string; onRender: (data: T) => React.ReactNode; intervalMs?: number }) {
   const [data, setData] = useState<T | null>(null);
   useEffect(() => {
     let active = true;
@@ -17,5 +17,5 @@ export function Live<T>({ url, render, intervalMs = 1000 }: { url: string; rende
       clearInterval(timer);
     };
   }, [url, intervalMs]);
-  return <>{data === null ? "Loading" : render(data)}</>;
+  return <>{data === null ? "Loading" : onRender(data)}</>;
 }

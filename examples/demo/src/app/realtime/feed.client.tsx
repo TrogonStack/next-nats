@@ -9,7 +9,7 @@ interface FeedMessage {
 }
 
 export function Feed() {
-  const { events, status, lastEventId } = useNatsEvents<FeedMessage>("/api/realtime/feed", { limit: 50 });
+  const { events, status, lastEventId } = useNatsEvents<FeedMessage>({ url: "/api/realtime/feed", limit: 50 });
   return (
     <section style={{ display: "grid", gap: "0.75rem" }}>
       <form action={publishFeed} style={{ display: "flex", gap: "0.5rem" }}>

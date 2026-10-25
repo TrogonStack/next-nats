@@ -8,7 +8,7 @@ await ensureStream({ name: DEMO_STREAM, subjects: [`${DEMO_SUBJECT}.>`, DEMO_DLQ
 
 defineConsumer<{ message: string; fail?: boolean }>({
   stream: DEMO_STREAM,
-  durable: "demo-logger",
+  durable: "event-logger",
   filterSubjects: [`${DEMO_SUBJECT}.>`],
   maxDeliver: 3,
   backoff: [500, 1_000],
@@ -37,7 +37,7 @@ subscribe<{ text: string; fail?: boolean }>(
 );
 
 defineCron({
-  name: "demo-heartbeat",
+  name: "heartbeat-beater",
   schedule: "* * * * *",
   handler: ({ scheduledAt, replica }) => {
     console.log("[demo] cron tick", scheduledAt.toISOString(), replica);

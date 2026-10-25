@@ -9,7 +9,7 @@ export function CronRuns() {
       <button onClick={() => fetch("/cron/runs", { method: "POST" })}>Run now</button>
       <Live<CronRun[]>
         url="/cron/runs"
-        render={(runs) =>
+        onRender={(runs) =>
           runs.length === 0 ? (
             <p>No runs yet. The next tick fires at the top of the minute.</p>
           ) : (

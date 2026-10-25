@@ -10,14 +10,15 @@ export interface NatsEvent<T = unknown> {
   data: T;
 }
 
-export interface UseNatsEventsOptions<T = unknown> {
+export interface UseNatsEventsProps<T = unknown> {
+  url: string | null;
   events?: string[];
   limit?: number;
   enabled?: boolean;
   withCredentials?: boolean;
   minDelay?: number;
   maxDelay?: number;
-  parse?: (raw: string) => T;
+  onParse?: (raw: string) => T;
   onEvent?: (event: NatsEvent<T>) => void;
 }
 
@@ -43,14 +44,14 @@ function withLastEventId(url: string, id: string | undefined): string {
   return parsed.toString();
 }
 
-export function useNatsEvents<T = unknown>(url: string | null, opts: UseNatsEventsOptions<T> = {}): UseNatsEvents<T> {
-  const { enabled = true, limit = 100, withCredentials, minDelay = 1_000, maxDelay = 30_000 } = opts;
-  const eventNames = opts.events?.join("\u0000") ?? "";
+export function useNatsEvents<T = unknown>(props: UseNatsEventsProps<T>): UseNatsEvents<T> {
+  const { url, enabled = true, limit = 100, withCredentials, minDelay = 1_000, maxDelay = 30_000 } = props;
+  const eventNames = props.events?.join("\u0000") ?? "";
   const [events, setEvents] = useState<NatsEvent<T>[]>([]);
   const [status, setStatus] = useState<NatsEventsStatus>("closed");
   const [lastId, setLastId] = useState<string | undefined>();
-  const latest = useRef(opts);
-  latest.current = opts;
+  const latest = useRef(props);
+  latest.current = props;
 
   useEffect(() => {
     if (!url || !enabled) {
@@ -65,7 +66,7 @@ export function useNatsEvents<T = unknown>(url: string | null, opts: UseNatsEven
 
     const handle = (e: Event) => {
       const message = e as MessageEvent<string>;
-      const parse = latest.current.parse ?? (defaultParse as (raw: string) => T);
+      const parse = latest.current.onParse ?? (defaultParse as (raw: string) => T);
       let data: T;
       try {
         data = parse(message.data);

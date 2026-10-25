@@ -33,7 +33,8 @@ export function Cursors() {
     return () => clearInterval(timer);
   }, []);
 
-  const { status } = useNatsEvents<Cursor>("/api/realtime/cursors", {
+  const { status } = useNatsEvents<Cursor>({
+    url: "/api/realtime/cursors",
     limit: 0,
     onEvent: ({ data }) => setCursors((prev) => ({ ...prev, [data.id]: { ...data, seen: Date.now() } })),
   });

@@ -9,7 +9,7 @@ export default function Page() {
       <h1>{feature.title}</h1>
       <p>{feature.blurb}</p>
       <p>
-        <code>demo-heartbeat</code> runs every minute. Each tick executes on exactly one replica.
+        <code>heartbeat-beater</code> runs every minute. Each tick executes on exactly one replica.
       </p>
       <CronRuns />
     </main>
