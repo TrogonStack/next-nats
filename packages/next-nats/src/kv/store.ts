@@ -4,6 +4,7 @@ import type { KV } from "@nats-io/kv";
 import { headers } from "@nats-io/nats-core";
 import { getJs, getJsm, getNc, openKv } from "../connection.js";
 import { Code, SpecError } from "../errors.js";
+import { getLogger } from "../logger.js";
 import { decodeKey, encodeKey } from "./key.js";
 
 export type RecordKind = "s" | "h" | "l" | "S" | "z";
@@ -110,8 +111,9 @@ export class KvStore {
         try {
           await (await getJsm()).streams.update(config.name, { ...config, allow_atomic: true });
           atomic = true;
-        } catch {
+        } catch (error) {
           atomic = false;
+          getLogger().warning("KV bucket does not allow atomic batches; multi() and multi-key commands are not atomic", { bucket: config.name, error });
         }
       }
       return { kv, nativeTtl, atomic };
