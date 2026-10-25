@@ -5,7 +5,35 @@
 `withNats(nextConfig, options)` from `@trogonstack/next-nats/next` returns a Next.js config.
 
 - Adds the NATS packages to `serverExternalPackages` (`NATS_EXTERNAL_PACKAGES`).
-- With `cache` set, installs the handlers and sets `cacheMaxMemorySize` to `0`.
+- With `cache` set and the platform self-hosted, installs the handlers and sets `cacheMaxMemorySize` to `0`.
+- On a self-hosted platform, aliases the Vercel and Upstash specifiers to the subpaths of this package and embeds `vercel.json`.
+- On the `vercel` platform, returns the config with only the external packages added: no aliases, no cache handlers and no embedded `vercel.json`.
+
+### Options
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `platform` | `"vercel"` when `process.env.VERCEL` is set at build time, otherwise `"self-hosted"` | Forces either behavior regardless of the environment |
+| `vercelJson` | `"vercel.json"` | Path of the file embedded at build time, relative to the project root. `false` skips embedding |
+| `cache` | off | Cache handler options below |
+
+### Import aliases
+
+`VERCEL_IMPORT_ALIASES` holds the mapping, applied to `turbopack.resolveAlias` and to webpack `resolve.alias` for server and browser bundles. Aliases you set yourself in `turbopack.resolveAlias` win.
+
+| Specifier | Resolves to |
+| --- | --- |
+| `@upstash/redis` | `@trogonstack/next-nats/redis` |
+| `@vercel/kv` | `@trogonstack/next-nats/kv` |
+| `@upstash/ratelimit` | `@trogonstack/next-nats/ratelimit` |
+| `@vercel/blob` | `@trogonstack/next-nats/blob` |
+| `@vercel/blob/client` | `@trogonstack/next-nats/blob/client` |
+| `@vercel/edge-config` | `@trogonstack/next-nats/edge-config` |
+| `@vercel/queue` | `@trogonstack/next-nats/queue` |
+
+### Embedded vercel.json
+
+The value is stored in `env.NEXT_NATS_VERCEL_JSON` and inlined into the server bundles, so the cron registrar and the queue worker read it without touching the filesystem and `output: "standalone"` works without copying the file. When the variable is absent, the runtime reads `vercel.json` from the working directory without tracing it.
 
 `cache` is `true` or an object. Besides the [cache options](./configuration.md#cache) it accepts `useCache`, `remote` and `incremental`, each defaulting to `true`.
 
