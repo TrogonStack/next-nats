@@ -72,6 +72,20 @@ function withExpiry(rec: KvRecord, x: number | undefined): KvRecord {
   return x === undefined ? rest : { ...rest, x };
 }
 
+function checkedTime(value: number, command: string, positive: boolean): number {
+  if (typeof value !== "number") return value;
+  if (!Number.isInteger(value)) throw new UpstashError("ERR", "value is not an integer or out of range");
+  if (positive && value <= 0) throw new UpstashError("ERR", `invalid expire time in '${command}' command`);
+  return value;
+}
+
+function checkedOptions(opts: { ex?: number; px?: number; exat?: number; pxat?: number }, command: string): void {
+  for (const field of ["ex", "px", "exat", "pxat"] as const) {
+    const value = opts[field];
+    if (value !== undefined) checkedTime(value, command, true);
+  }
+}
+
 function expiryFrom(opts: SetCommandOptions, current: KvRecord | null, now: number): number | undefined {
   if (opts.ex !== undefined) return now + opts.ex * 1000;
   if (opts.px !== undefined) return now + opts.px;
@@ -235,6 +249,7 @@ export class Redis {
 
   async set<TData>(key: string, value: TData, opts: SetCommandOptions = {} as SetCommandOptions): Promise<"OK" | TData | null> {
     const raw = serialize(value);
+    checkedOptions(opts, "set");
     const simple = !opts.nx && !opts.xx && !opts.keepTtl && !opts.get;
     if (simple) {
       const x = expiryFrom(opts, null, Date.now());
@@ -261,11 +276,13 @@ export class Redis {
   }
 
   async setex<TData>(key: string, ttl: number, value: TData): Promise<"OK"> {
+    checkedTime(ttl, "setex", true);
     await this.set(key, value, { ex: ttl });
     return "OK";
   }
 
   async psetex<TData>(key: string, ttl: number, value: TData): Promise<string> {
+    checkedTime(ttl, "psetex", true);
     await this.set(key, value, { px: ttl });
     return "OK";
   }
@@ -283,6 +300,7 @@ export class Redis {
   }
 
   async getex<TData>(key: string, opts?: GetExCommandOptions): Promise<TData | null> {
+    if (opts) checkedOptions(opts, "getex");
     return this.store.mutate<TData | null>(key, (cur) => {
       if (!cur) return { next: undefined, result: null };
       if (cur.t !== "s") throw wrongType();
@@ -413,19 +431,23 @@ export class Redis {
     });
   }
 
-  expire(key: string, seconds: number, option?: ExpireOption): Promise<0 | 1> {
+  async expire(key: string, seconds: number, option?: ExpireOption): Promise<0 | 1> {
+    checkedTime(seconds, "expire", false);
     return this.setExpiry(key, Date.now() + seconds * 1000, option);
   }
 
-  pexpire(key: string, milliseconds: number, option?: ExpireOption): Promise<0 | 1> {
+  async pexpire(key: string, milliseconds: number, option?: ExpireOption): Promise<0 | 1> {
+    checkedTime(milliseconds, "pexpire", false);
     return this.setExpiry(key, Date.now() + milliseconds, option);
   }
 
-  expireat(key: string, unix: number, option?: ExpireOption): Promise<0 | 1> {
+  async expireat(key: string, unix: number, option?: ExpireOption): Promise<0 | 1> {
+    checkedTime(unix, "expireat", false);
     return this.setExpiry(key, unix * 1000, option);
   }
 
-  pexpireat(key: string, unix: number, option?: ExpireOption): Promise<0 | 1> {
+  async pexpireat(key: string, unix: number, option?: ExpireOption): Promise<0 | 1> {
+    checkedTime(unix, "pexpireat", false);
     return this.setExpiry(key, unix, option);
   }
 
@@ -854,7 +876,7 @@ export class Redis {
 
   async spop<TData>(key: string, count?: number): Promise<TData | null> {
     return this.update<string[], unknown>(key, "S", (cur) => {
-      if (!cur) return { result: null };
+      if (!cur) return { result: count === undefined ? null : [] };
       const taken = randomPick(cur, count ?? 1);
       const rest = cur.filter((m) => !taken.includes(m));
       const decoded = taken.map((m) => this.de(m));
