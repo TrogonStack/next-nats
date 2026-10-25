@@ -53,3 +53,22 @@ The blob differential suite runs the real `@vercel/blob` against a local fake of
 - Client token wire format differs: `blob_client_` prefix and the `x-blob-signature` header here, `vercel_blob_client_<storeId>_` and `x-vercel-signature` there.
 - Out of scope for parity: `presign`, `issueSignedToken`, `putImage`, `putFromUrl` and the real SDK's missing token error, because the configured secret is always used here.
 - The real client mishandles a bare `Uint8Array` body in multipart and progress uploads. The suite uses `Buffer` bodies there.
+
+### Redis, KV and ratelimit
+
+The differential suites run the real `@upstash/redis`, `@vercel/kv` and `@upstash/ratelimit` against Redis 8.2 behind the `hiett/serverless-redis-http` proxy. These are the places where the comparison depends on a choice, or where we deliberately differ.
+
+- Redis 8 is used because `hgetdel` needs it. The proxy is not Upstash's service, so server-only features (such as the `allow-key-locking` script flag) are stripped for the real client.
+- `ping(message)` in the real SDK sends only the first character of the message. Ours reproduces that.
+- When a pipeline or auto-pipelined command fails, the real SDK sometimes throws a `TypeError` ("reading 'every'", "'0'" or "'length'") instead of surfacing the server error. Ours returns the server error. The comparison accepts the `TypeError` only when ours carries a server error.
+- The real SDK appends `, command was: [...]` to errors from direct commands. Ours does not, and the comparison strips the suffix.
+- The `Command failed: ` error prefix comes from SDK auto-pipelining and is reproduced when `enableAutoPipelining` is not `false`.
+- Pipeline error messages use the wire command name, so `copy` is reported as `COPY`.
+- With `automaticDeserialization: false`, floats are formatted with JavaScript `String(n)`.
+- The proxy crashes on some `multi` executions with a 500. Those cases are skipped, not compared.
+- The Redis surface test keeps an explicit list of commands we do not implement (search, JSON, vector, functions, geo, bit operations, streams, hash field expiry, `lmpop`, HyperLogLog, pub/sub). Script commands (`eval` and its relatives) throw `UnsupportedCommandError`.
+- `@vercel/kv` throws a missing environment variable error the first time the default `kv` client is used. Ours is created eagerly and needs no environment.
+- Ratelimit multi-region and `enableProtection` are unsupported and throw `UnsupportedCommandError`.
+- Ratelimit stores one record per identifier where the real library uses several keys. Only the limiter results are comparable, and they match.
+- The real `resetUsedTokens` deletes with a `SCAN` of `identifier:*`, which can remove keys of other identifiers sharing the prefix. Ours removes one identifier.
+- Ratelimit scenarios fake `Date` only. Key expiry on the real Redis is emulated by deleting keys the model considers expired, with 1 s granularity and a 1.5 s slack.

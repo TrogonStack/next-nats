@@ -121,7 +121,7 @@ export class Ratelimit {
       if (res.success) break;
       if (res.reset === 0) throw new Error("This should not happen");
       const wait = Math.min(res.reset, deadline) - Date.now();
-      await new Promise((resolve) => setTimeout(resolve, Math.max(0, wait)));
+      await new Promise((resolve) => setTimeout(resolve, wait > 0 ? wait : 100));
       if (Date.now() > deadline) break;
     }
     return res;
@@ -136,7 +136,7 @@ export class Ratelimit {
 
   setDynamicLimit = async (options: { limit: number | false }): Promise<void> => {
     if (!this.dynamicLimits) {
-      throw new Error("dynamicLimits must be enabled in the Ratelimit constructor to use setDynamicLimit");
+      throw new Error("dynamicLimits must be enabled in the Ratelimit constructor to use setDynamicLimit()");
     }
     const key = dynamicLimitKey(this.prefix);
     if (options.limit === false) await this.primaryRedis.del(key);
@@ -145,9 +145,10 @@ export class Ratelimit {
 
   getDynamicLimit = async (): Promise<{ dynamicLimit: number | null }> => {
     if (!this.dynamicLimits) {
-      throw new Error("dynamicLimits must be enabled in the Ratelimit constructor to use getDynamicLimit");
+      throw new Error("dynamicLimits must be enabled in the Ratelimit constructor to use getDynamicLimit()");
     }
-    return { dynamicLimit: await this.primaryRedis.get<number>(dynamicLimitKey(this.prefix)) };
+    const stored = await this.primaryRedis.get<number>(dynamicLimitKey(this.prefix));
+    return { dynamicLimit: stored === null ? null : Number(stored) };
   };
 
   protected getKey(identifier: string): string {

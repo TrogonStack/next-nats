@@ -20,6 +20,26 @@ export function deserialize<T = unknown>(raw: string | null | undefined, enabled
   }
 }
 
+export function deserializeHashValue(raw: string, enabled: boolean): unknown {
+  if (!enabled) return raw;
+  const n = Number(raw);
+  if (!Number.isNaN(n) && !Number.isSafeInteger(n)) return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
+export function deserializePlain(raw: string | null | undefined, enabled: boolean): unknown {
+  if (raw === null || raw === undefined || !enabled) return raw ?? null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
 export function wrongType(): UpstashError {
   return new UpstashError("WRONGTYPE", "Operation against a key holding the wrong kind of value");
 }
@@ -28,19 +48,20 @@ export function syntaxError(): UpstashError {
   return new UpstashError("ERR", "syntax error");
 }
 
-const INTEGER = /^-?\d+$/;
+const INTEGER = /^(0|-?[1-9]\d*)$/;
+const FLOAT = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 
-export function asInteger(value: string | undefined): number {
+export function asInteger(value: string | undefined, message = "value is not an integer or out of range"): number {
   if (value !== undefined && INTEGER.test(value)) {
     const n = Number(value);
     if (Number.isSafeInteger(n)) return n;
   }
-  throw new UpstashError("ERR", "value is not an integer or out of range");
+  throw new UpstashError("ERR", message);
 }
 
-export function asFloat(value: string | undefined): number {
-  const n = value === undefined || value.trim() === "" ? Number.NaN : Number(value);
-  if (!Number.isFinite(n)) throw new UpstashError("ERR", "value is not a valid float");
+export function asFloat(value: string | undefined, message = "value is not a valid float"): number {
+  const n = value !== undefined && FLOAT.test(value) ? Number(value) : Number.NaN;
+  if (!Number.isFinite(n)) throw new UpstashError("ERR", message);
   return n;
 }
 

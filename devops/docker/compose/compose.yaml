@@ -8,5 +8,26 @@ services:
       - nats-data:/data
     restart: unless-stopped
 
+  redis:
+    profiles: ["redis"]
+    image: redis:8.2.10-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  srh:
+    profiles: ["redis"]
+    image: hiett/serverless-redis-http:0.0.10
+    environment:
+      SRH_MODE: env
+      SRH_TOKEN: ${SRH_TOKEN:-parity-token}
+      SRH_CONNECTION_STRING: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+
 volumes:
   nats-data:
