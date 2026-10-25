@@ -1,3 +1,4 @@
+import "server-only";
 export { NatsUseCacheHandler, createUseCacheHandler, type UseCacheMeta } from "./use-cache.js";
 export {
   NatsIncrementalCacheHandler,
