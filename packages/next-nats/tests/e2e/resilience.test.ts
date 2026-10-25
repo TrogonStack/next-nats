@@ -38,7 +38,7 @@ describe("NATS restarts while the app keeps running", () => {
     let flowing = true;
     const traffic = (async () => {
       while (flowing) {
-        const response = await fetch(`${server.origin}/api/ratelimit`, { headers: { "x-forwarded-for": unique("flow") } }).catch((error: Error) => error);
+        const response = await fetch(`${server.origin}/api/ratelimit`, { headers: { "x-forwarded-for": unique("flow") }, signal: AbortSignal.timeout(60_000) }).catch((error: Error) => error);
         if (response instanceof Error) errors.push(response.message);
         await new Promise((resolve) => setTimeout(resolve, 50));
       }

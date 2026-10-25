@@ -40,6 +40,7 @@ export async function startServer({ variant, port, env = {} }: StartServerOption
       ...env,
     },
     stdio: ["ignore", "pipe", "pipe"],
+    detached: true,
   });
   let output = "";
   child.stdout?.on("data", (chunk: Buffer) => (output += chunk.toString()));
@@ -51,14 +52,22 @@ export async function startServer({ variant, port, env = {} }: StartServerOption
     pid: child.pid ?? -1,
     logs: () => output,
     async stop() {
-      if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
-      const killer = setTimeout(() => child.kill("SIGKILL"), 10_000);
+      const signal = (name: NodeJS.Signals) => {
+        try {
+          process.kill(-child.pid!, name);
+        } catch {
+          return;
+        }
+      };
+      signal("SIGTERM");
+      const killer = setTimeout(() => signal("SIGKILL"), 10_000);
       await exited;
+      signal("SIGTERM");
       clearTimeout(killer);
     },
   };
   try {
-    await waitUntil(async () => (await fetch(`${origin}/-/liveness`).catch(() => undefined))?.status === 200, 60_000, `server on ${port} to start\n${output}`);
+    await waitUntil(async () => (await fetch(`${origin}/-/liveness`, { signal: AbortSignal.timeout(2_000) }).catch(() => undefined))?.status === 200, 60_000, `server on ${port} to start\n${output}`);
   } catch (error) {
     await server.stop();
     throw error;
