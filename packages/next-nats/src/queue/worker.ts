@@ -19,6 +19,7 @@ export interface QueueTrigger {
   path: string;
   retryAfterSeconds: number;
   initialDelaySeconds: number;
+  maxDeliveries?: number;
 }
 
 interface VercelJsonTrigger {
@@ -26,6 +27,7 @@ interface VercelJsonTrigger {
   topic?: string;
   retryAfterSeconds?: number;
   initialDelaySeconds?: number;
+  maxDeliveries?: number;
 }
 
 interface VercelJson {
@@ -85,6 +87,7 @@ export function loadTriggers(config: VercelJson): QueueTrigger[] {
         path,
         retryAfterSeconds: trigger.retryAfterSeconds ?? DEFAULT_RETRY_AFTER_SECONDS,
         initialDelaySeconds: trigger.initialDelaySeconds ?? 0,
+        ...(trigger.maxDeliveries !== undefined && { maxDeliveries: trigger.maxDeliveries }),
       });
     }
   }
@@ -112,6 +115,18 @@ export interface QueueWorker {
 
 const noWorker: QueueWorker = { triggers: [], stop: async () => {} };
 
+const delayedDeliveries = new Map<string, number>();
+
+function sequenceKey(stored: StoredMessage): string {
+  const tokens = stored.reply.split(".");
+  const streamIndex = tokens.length === 9 ? 2 : 4;
+  return `${tokens[streamIndex]}:${tokens[streamIndex + 3]}`;
+}
+
+function deliveryCountOf(stored: StoredMessage): number {
+  return Math.max(1, stored.deliveryCount - (delayedDeliveries.get(sequenceKey(stored)) ?? 0));
+}
+
 function callbackHeaders(trigger: QueueTrigger, stored: StoredMessage, ackWait: number): Headers {
   const headers = new Headers();
   for (const [name, value] of Object.entries(stored.headers)) {
@@ -131,7 +146,7 @@ function callbackHeaders(trigger: QueueTrigger, stored: StoredMessage, ackWait: 
   headers.set("ce-vqsmessageid", stored.messageId);
   headers.set("ce-vqsregion", stored.region);
   headers.set("ce-vqsreceipthandle", encodeReceipt(stored.reply));
-  headers.set("ce-vqsdeliverycount", String(stored.deliveryCount));
+  headers.set("ce-vqsdeliverycount", String(deliveryCountOf(stored)));
   headers.set("ce-vqscreatedat", stored.createdAt.toISOString());
   headers.set("ce-vqsexpiresat", stored.expiresAt.toISOString());
   headers.set("ce-vqsvisibilitydeadline", new Date(Date.now() + ackWait * 1000).toISOString());
@@ -146,10 +161,13 @@ async function deliverToRoute(trigger: QueueTrigger, stored: StoredMessage, stor
   const { nc } = await getNats();
   const lease = ackLease(nc, stored.reply);
   const initialDelayMs = stored.visibleAt.getTime() + trigger.initialDelaySeconds * 1000 - Date.now();
+  const key = sequenceKey(stored);
   if (initialDelayMs > 0) {
+    delayedDeliveries.set(key, (delayedDeliveries.get(key) ?? 0) + 1);
     await lease.retryIn(initialDelayMs / 1000);
     return;
   }
+  const deliveryCount = deliveryCountOf(stored);
   void store;
   try {
     const response = await doFetch(`${base}${trigger.path}`, {
@@ -159,10 +177,18 @@ async function deliverToRoute(trigger: QueueTrigger, stored: StoredMessage, stor
       signal: AbortSignal.timeout(ackWait * 1000),
     });
     await response.arrayBuffer().catch(() => undefined);
-    if (response.ok) return;
+    if (response.ok) {
+      delayedDeliveries.delete(key);
+      return;
+    }
     getLogger().warning("queue callback was not accepted", { status: response.status, path: trigger.path, messageId: stored.messageId });
   } catch (error) {
     getLogger().warning("queue callback failed", { error, path: trigger.path, messageId: stored.messageId });
+  }
+  if (trigger.maxDeliveries !== undefined && deliveryCount >= trigger.maxDeliveries) {
+    delayedDeliveries.delete(key);
+    await lease.ack();
+    return;
   }
   await lease.retryIn(trigger.retryAfterSeconds);
 }
