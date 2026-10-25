@@ -1,4 +1,3 @@
-import { invalidArgument } from "../errors.js";
 import type { KvRecord, Store } from "../kv/store.js";
 import { internals } from "../redis/redis.js";
 import type { Redis } from "../redis/redis.js";
@@ -96,13 +95,15 @@ export class Cache implements EphemeralCache {
 
 export function toMs(duration: Duration): number {
   const match = /^(\d+(?:\.\d+)?)\s?(ms|s|m|h|d|w)$/.exec(duration);
-  if (!match) throw invalidArgument("next-nats.ratelimit", "INVALID_DURATION", `Invalid duration "${duration}"`);
+  if (!match) throw new Error(`Unable to parse window size: ${duration}`);
   const unit = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 }[match[2] as Unit];
-  return Number(match[1]) * unit;
+  const result = Math.round(Number.parseFloat(match[1]!) * unit);
+  if (result < 1) throw new Error(`Window size must be at least 1 ms, got: ${duration}`);
+  return result;
 }
 
 export function dynamicLimitKey(prefix: string): string {
-  return `${prefix}:dynamic:limit`;
+  return `${prefix}:dynamic:global`;
 }
 
 function storeOf(ctx: RegionContext): Store {
