@@ -157,8 +157,8 @@ describe("send validation", () => {
     );
   });
 
-  it("rejects delay beyond retention and oversized idempotency keys", async () => {
-    await expect(client.send(topicName("v"), 1, { retentionSeconds: 60, delaySeconds: 120 })).rejects.toBeInstanceOf(ours.BadRequestError);
+  it("accepts a delay beyond retention and rejects oversized idempotency keys", async () => {
+    await expect(client.send(topicName("v"), 1, { retentionSeconds: 60, delaySeconds: 120 })).resolves.toHaveProperty("messageId");
     await expect(client.send(topicName("v"), 1, { idempotencyKey: "k".repeat(257) })).rejects.toBeInstanceOf(ours.BadRequestError);
   });
 });

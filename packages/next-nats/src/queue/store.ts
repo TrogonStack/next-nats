@@ -137,7 +137,6 @@ function validate(opts: SendOptions): { retention: number; delay: number } {
   if (!Number.isFinite(delay) || delay < 0 || delay > MAX_RETENTION_SECONDS) {
     throw new BadRequestError(`delaySeconds must be between 0 and ${MAX_RETENTION_SECONDS}`);
   }
-  if (delay > retention) throw new BadRequestError("delaySeconds cannot exceed retentionSeconds");
   return { retention, delay };
 }
 
