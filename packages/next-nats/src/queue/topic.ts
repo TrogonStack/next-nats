@@ -1,15 +1,16 @@
 import { subject } from "../values.js";
+import { invalidArgument } from "../errors.js";
 
 const TOPIC = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/;
 const GROUP = /^[A-Za-z0-9_-]+$/;
 
 export function assertTopic(topic: string): string {
-  if (!TOPIC.test(topic)) throw new TypeError(`Invalid queue topic "${topic}": use dot separated tokens of letters, digits, "-" and "_"`);
+  if (!TOPIC.test(topic)) throw invalidArgument("next-nats.queue", "INVALID_TOPIC", `Invalid queue topic "${topic}": use dot separated tokens of letters, digits, "-" and "_"`);
   return topic;
 }
 
 export function assertGroup(group: string): string {
-  if (!GROUP.test(group)) throw new TypeError(`Invalid consumer group "${group}": use letters, digits, "-" and "_"`);
+  if (!GROUP.test(group)) throw invalidArgument("next-nats.queue", "INVALID_GROUP", `Invalid consumer group "${group}": use letters, digits, "-" and "_"`);
   return group;
 }
 

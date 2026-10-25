@@ -1,3 +1,4 @@
+import { Code, SpecError, Visibility } from "../errors.js";
 export interface StandardSchemaIssue {
   readonly message: string;
   readonly path?: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }>;
@@ -19,11 +20,34 @@ export interface StandardSchemaV1<Input = unknown, Output = Input> {
 export type ParserFn<T> = (raw: unknown) => T | Promise<T>;
 export type Parser<T> = StandardSchemaV1<any, T> | ParserFn<T>;
 
-export class ValidationError extends Error {
+function pointerOf(issue: StandardSchemaIssue): string | undefined {
+  if (!issue.path || issue.path.length === 0) return undefined;
+  const segments = issue.path.map((p) => String(typeof p === "object" ? p.key : p).replaceAll("~", "~0").replaceAll("/", "~1"));
+  return `/${segments.join("/")}`;
+}
+
+export class ValidationError extends SpecError {
   readonly issues: ReadonlyArray<StandardSchemaIssue>;
 
   constructor(issues: ReadonlyArray<StandardSchemaIssue>) {
-    super(issues.map((i) => i.message).join("; ") || "Validation failed");
+    super({
+      code: Code.INVALID_ARGUMENT,
+      domain: "next-nats.services",
+      reason: "VALIDATION_FAILED",
+      message: issues.map((i) => i.message).join("; ") || "Validation failed",
+      visibility: Visibility.PUBLIC,
+      causes: issues.map(
+        (issue) =>
+          new SpecError({
+            code: Code.INVALID_ARGUMENT,
+            domain: "next-nats.services",
+            reason: "INVALID_FIELD",
+            message: issue.message,
+            visibility: Visibility.PUBLIC,
+            subject: pointerOf(issue),
+          }).spec,
+      ),
+    });
     this.name = "ValidationError";
     this.issues = issues;
   }

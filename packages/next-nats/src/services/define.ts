@@ -3,8 +3,10 @@ import { headers as natsHeaders, type MsgHdrs } from "@nats-io/nats-core";
 import { Svcm, type Service, type ServiceMsg } from "@nats-io/services";
 import { codec } from "../codec.js";
 import { getNatsConfig, getNats, onNatsShutdown } from "../connection.js";
+import { httpStatusOf, SpecError, toSpecError, Visibility, type PublicErrorBody } from "../errors.js";
+import { getLogger } from "../logger.js";
 import { EndpointError } from "./errors.js";
-import { runParser, ValidationError, type Parser } from "./schema.js";
+import { runParser, type Parser } from "./schema.js";
 
 export const SERVICE_INSTANCE_HEADER = "Nats-Service-Instance";
 
@@ -70,10 +72,12 @@ export function endpointSubject(service: string, endpointName: string, override?
   return override ?? `${service}.${endpointName}`;
 }
 
-function failureOf(error: unknown): { code: number; message: string } {
-  if (error instanceof EndpointError) return { code: error.code, message: error.message };
-  if (error instanceof ValidationError) return { code: 400, message: error.message };
-  return { code: 500, message: error instanceof Error ? error.message : String(error) };
+function failureOf(error: unknown): { source: SpecError; status: number; body: PublicErrorBody } {
+  const source = toSpecError(error);
+  const body = source.toPublic(Visibility.PRIVATE);
+  if (source.spec.visibility < Visibility.PRIVATE) return { source, status: 500, body };
+  const status = error instanceof EndpointError ? error.code : httpStatusOf(source.spec.code);
+  return { source, status, body };
 }
 
 async function dispatch(
@@ -99,12 +103,18 @@ async function dispatch(
     if (def.output) output = await runParser(def.output, output);
     msg.respond(output === undefined ? undefined : codec.encodeJson(output), { headers: reply });
   } catch (error) {
-    const { code, message } = failureOf(error);
+    const { source, status, body } = failureOf(error);
     failures.errors += 1;
-    failures.lastError = message;
-    failures.lastErrorCode = code;
-    if (code >= 500) onError?.(error, ctx);
-    msg.respondError(code, message, undefined, { headers: reply });
+    failures.lastError = body.message;
+    failures.lastErrorCode = status;
+    const context = { service: ctx.service, endpoint: ctx.endpoint, errorId: source.spec.id, error };
+    if (status >= 500) {
+      getLogger().error("service endpoint failed", context);
+      onError?.(error, ctx);
+    } else {
+      getLogger().debug("service endpoint rejected a request", context);
+    }
+    msg.respondError(status, body.message, codec.encodeJson(body), { headers: reply });
   }
 }
 
@@ -191,7 +201,7 @@ export function defineService<const E extends EndpointMap>(config: ServiceConfig
   onNatsShutdown(() => definition.stop());
 
   if (getNatsConfig().workers) {
-    definition.start().catch((error) => console.error(`[next-nats] service "${config.name}" failed to start:`, error));
+    definition.start().catch((error) => getLogger().error(`service "${config.name}" failed to start`, { error }));
   }
   return definition;
 }

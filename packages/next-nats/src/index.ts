@@ -1,6 +1,8 @@
 import "server-only";
 
 export * from "./values.js";
+export * from "./errors.js";
+export * from "./logger.js";
 export * from "./codec.js";
 export * from "./config.js";
 export * from "./connection.js";

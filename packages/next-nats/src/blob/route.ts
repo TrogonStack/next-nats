@@ -1,7 +1,8 @@
 import "server-only";
 import { sliceStream } from "./body.js";
 import { getBlobStore, describe, etagOf, matchesEtag, put, statBlob, del } from "./store.js";
-import { BlobError } from "./errors.js";
+import { publicErrorResponse } from "../errors.js";
+import { BlobError, BlobFileTooLargeError } from "./errors.js";
 import { verifyBlobToken, type BlobTokenPayload } from "./token.js";
 
 type RouteContext = { params: Promise<{ path?: string[] | string }> };
@@ -137,8 +138,7 @@ export function createBlobRoute(options: BlobRouteOptions = {}) {
         return Response.json(result, { status: 200 });
       } catch (error) {
         if (error instanceof BlobError) {
-          const status = /exceeds/.test(error.message) ? 413 : /already exists/.test(error.message) ? 409 : 400;
-          return Response.json({ error: error.message }, { status });
+          return publicErrorResponse(error, { status: error instanceof BlobFileTooLargeError ? 413 : undefined });
         }
         throw error;
       }

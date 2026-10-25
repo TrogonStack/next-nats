@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { closeNats, connectNats } from "../../src/connection.js";
+import { consoleLogger, setLogger, silentLogger } from "../../src/logger.js";
 import {
   defineService,
   discover,
@@ -100,9 +101,17 @@ describe("services request/reply", () => {
     expect(error).toMatchObject({ code: 422, kind: "service", message: "Division by zero" });
   });
 
-  it("maps thrown errors to 500", async () => {
-    const error = await client.boom().catch((e) => e);
-    expect(error).toMatchObject({ code: 500, kind: "service", message: "kaput" });
+  it("maps thrown errors to 500 without leaking the internal message", async () => {
+    const logged: unknown[] = [];
+    setLogger({ ...silentLogger, error: (_message, context) => void logged.push(context?.error) });
+    try {
+      const error = await client.boom().catch((e) => e);
+      expect(error).toMatchObject({ code: 500, kind: "service", message: "An internal error occurred" });
+      expect(JSON.stringify(error.toPublic())).not.toContain("kaput");
+      expect(logged.some((e) => e instanceof Error && e.message === "kaput")).toBe(true);
+    } finally {
+      setLogger(consoleLogger());
+    }
   });
 
   it("maps request timeouts to 408", async () => {

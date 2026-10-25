@@ -1,5 +1,6 @@
 import type { CacheEntry, CacheHandler } from "next/cache.js";
 import { getBackend, type BackendOptions, type CacheBackend } from "./backend.js";
+import { warnThrottled } from "../logger.js";
 
 export interface UseCacheMeta {
   tags: string[];
@@ -57,7 +58,7 @@ export class NatsUseCacheHandler implements CacheHandler {
       const revalidate = tags.isStale(all, meta.timestamp) ? -1 : meta.revalidate;
       return { ...meta, revalidate, value: streamFromBytes(stored.body) };
     } catch (err) {
-      console.warn("next-nats cache get failed", cacheKey, err);
+      warnThrottled("cache.get", "cache get failed, serving a miss", { cacheKey, error: err });
       return undefined;
     }
   }
@@ -78,7 +79,7 @@ export class NatsUseCacheHandler implements CacheHandler {
       const { entries } = await this.open();
       await entries.set(cacheKey, meta, body);
     } catch (err) {
-      console.warn("next-nats cache set failed", cacheKey, err);
+      warnThrottled("cache.set", "cache set failed, entry not stored", { cacheKey, error: err });
     } finally {
       resolvePending();
       this.pending.delete(cacheKey);
@@ -89,7 +90,7 @@ export class NatsUseCacheHandler implements CacheHandler {
     try {
       await (await this.open()).tags.ready;
     } catch (err) {
-      console.warn("next-nats cache refreshTags failed", err);
+      warnThrottled("cache.refreshTags", "cache refreshTags failed", { error: err });
     }
   }
 
@@ -99,7 +100,7 @@ export class NatsUseCacheHandler implements CacheHandler {
       await backend.tags.ready;
       return backend.tags.maxExpired(tags);
     } catch (err) {
-      console.warn("next-nats cache getExpiration failed", err);
+      warnThrottled("cache.getExpiration", "cache getExpiration failed, assuming no expiration", { error: err });
       return 0;
     }
   }

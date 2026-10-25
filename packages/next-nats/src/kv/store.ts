@@ -2,6 +2,7 @@ import "server-only";
 import { JetStreamApiCodes, JetStreamApiError } from "@nats-io/jetstream";
 import type { KV } from "@nats-io/kv";
 import { getJs, openKv } from "../connection.js";
+import { Code, SpecError } from "../errors.js";
 import { decodeKey, encodeKey } from "./key.js";
 
 export type RecordKind = "s" | "h";
@@ -29,12 +30,20 @@ interface Handle {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-export class KvError extends Error {
+export class KvError extends SpecError {
   constructor(
     readonly code: string,
     message: string,
+    spec: { code?: Code; reason?: string } = {},
   ) {
-    super(`${code} ${message}`);
+    super({
+      code: code === "WRONGTYPE" ? Code.FAILED_PRECONDITION : Code.INVALID_ARGUMENT,
+      reason: code === "WRONGTYPE" ? "WRONG_TYPE" : "INVALID_COMMAND",
+      ...spec,
+      domain: "next-nats.kv",
+      message,
+      legacyMessage: `${code} ${message}`,
+    });
     this.name = "KvError";
   }
 }
@@ -147,7 +156,7 @@ export class KvStore {
       if (ok) return result;
       if (attempt > 2) await new Promise((r) => setTimeout(r, Math.random() * Math.min(5 * attempt, 50)));
     }
-    throw new KvError("ERR", `contention on key "${key}" exceeded ${this.maxRetries} retries`);
+    throw new KvError("ERR", `contention on key "${key}" exceeded ${this.maxRetries} retries`, { code: Code.ABORTED, reason: "CONTENTION" });
   }
 
   async allKeys(): Promise<string[]> {
