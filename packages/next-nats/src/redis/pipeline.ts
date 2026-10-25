@@ -94,6 +94,7 @@ class PipelineImpl {
         try {
           results.push({ result: await command.apply(bare, args) });
         } catch (error) {
+          if (this.atomic && !(error instanceof UpstashError)) throw error;
           results.push({ error: error instanceof Error ? error.message : String(error), result: null, cause: error });
         }
       }
