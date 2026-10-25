@@ -18,6 +18,7 @@ interface Hit {
   url?: string;
   userAgent?: string;
   authorization?: string;
+  schedule?: string | string[];
 }
 
 const hits: Hit[] = [];
@@ -27,7 +28,7 @@ let baseUrl: string;
 beforeAll(async () => {
   await connectNats({ servers: process.env.NATS_SERVERS, workers: true, name: "next-nats-cron-vercel-test" });
   server = createServer((req: IncomingMessage, res) => {
-    hits.push({ method: req.method, url: req.url, userAgent: req.headers["user-agent"], authorization: req.headers.authorization });
+    hits.push({ method: req.method, url: req.url, userAgent: req.headers["user-agent"], authorization: req.headers.authorization, schedule: req.headers["x-vercel-cron-schedule"] });
     res.end("ok");
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -74,7 +75,7 @@ describe("vercel.json crons", () => {
     while (hits.length === 0 && Date.now() < end) await new Promise((r) => setTimeout(r, 50));
     await new Promise((r) => setTimeout(r, 1_000));
     expect(hits).toEqual([
-      { method: "GET", url: "/api/cron/daily?x=1", userAgent: "vercel-cron/1.0", authorization: "Bearer s3cret" },
+      { method: "GET", url: "/api/cron/daily?x=1", userAgent: "vercel-cron/1.0", authorization: "Bearer s3cret", schedule: "0 5 * * *" },
     ]);
     delete process.env.CRON_SECRET;
     await Promise.all([a.stop(), b.stop()]);

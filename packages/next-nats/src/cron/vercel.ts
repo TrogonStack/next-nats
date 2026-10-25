@@ -78,6 +78,7 @@ export function registerVercelCrons(options: VercelCronsOptions = {}): CronJob[]
           signal,
           headers: {
             "user-agent": VERCEL_CRON_USER_AGENT,
+            "x-vercel-cron-schedule": cron.schedule,
             ...(secret && { authorization: `Bearer ${secret}` }),
           },
         });

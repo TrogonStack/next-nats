@@ -40,7 +40,7 @@ Turn the worker on in `registerNats`:
 await registerNats({ vercelCrons: true });
 ```
 
-On each schedule, one replica sends `GET` to the path with `User-Agent: vercel-cron/1.0` and `Authorization: Bearer $CRON_SECRET`, exactly once across replicas. Set `CRON_SECRET` in the environment of the worker and the app. Set `NEXT_NATS_CRON_BASE_URL` to the address the worker should call, such as the load balancer in front of the app. Pass `{ configPath, baseUrl, secret, timeoutMs }` instead of `true` to override the defaults. It runs only where `NATS_WORKERS=true`.
+On each schedule, one replica sends `GET` to the path with `User-Agent: vercel-cron/1.0`, `x-vercel-cron-schedule` and `Authorization: Bearer $CRON_SECRET`, exactly once across replicas. Set `CRON_SECRET` in the environment of the worker and the app. Set `NEXT_NATS_CRON_BASE_URL` to the address the worker should call, such as the load balancer in front of the app. Pass `{ configPath, baseUrl, secret, timeoutMs }` instead of `true` to override the defaults. It runs only where `NATS_WORKERS=true`.
 
 ## Tune retries
 
