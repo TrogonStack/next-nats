@@ -1,11 +1,15 @@
+import { fileURLToPath } from "node:url";
 import type { NextConfig } from "next";
+import { cacheOptionsToEnv, type CacheOptions } from "../cache/options.js";
+
+export interface WithNatsCacheOptions extends CacheOptions {
+  useCache?: boolean;
+  remote?: boolean;
+  incremental?: boolean;
+}
 
 export interface WithNatsOptions {
-  cache?: {
-    cacheHandler?: string;
-    cacheHandlers?: NonNullable<NextConfig["cacheHandlers"]>;
-    disableDefaultInMemory?: boolean;
-  };
+  cache?: boolean | WithNatsCacheOptions;
 }
 
 export const NATS_EXTERNAL_PACKAGES = [
@@ -18,13 +22,23 @@ export const NATS_EXTERNAL_PACKAGES = [
   "nkeys.js",
 ];
 
+export const USE_CACHE_HANDLER_PATH = fileURLToPath(new URL("../cache/use-cache-handler.js", import.meta.url));
+export const INCREMENTAL_HANDLER_PATH = fileURLToPath(new URL("../cache/incremental-handler.js", import.meta.url));
+
 function applyCache(config: NextConfig, cache: WithNatsOptions["cache"]): NextConfig {
   if (!cache) return config;
+  const { useCache = true, remote = true, incremental = true, ...handlerOptions } = cache === true ? {} : cache;
+  Object.assign(process.env, cacheOptionsToEnv(handlerOptions));
+  const cacheHandlers = {
+    ...config.cacheHandlers,
+    ...(useCache && { default: USE_CACHE_HANDLER_PATH }),
+    ...(useCache && remote && { remote: USE_CACHE_HANDLER_PATH }),
+  };
   return {
     ...config,
-    ...(cache.cacheHandler && { cacheHandler: cache.cacheHandler }),
-    ...(cache.cacheHandlers && { cacheHandlers: { ...config.cacheHandlers, ...cache.cacheHandlers } }),
-    ...(cache.disableDefaultInMemory && { cacheMaxMemorySize: 0 }),
+    ...(incremental && { cacheHandler: INCREMENTAL_HANDLER_PATH }),
+    ...(Object.keys(cacheHandlers).length > 0 && { cacheHandlers }),
+    cacheMaxMemorySize: 0,
   };
 }
 
