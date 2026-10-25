@@ -1,8 +1,8 @@
 "use server";
 import "server-only";
 
-import { kv } from "@trogonstack/next-nats/kv";
-import { Ratelimit } from "@trogonstack/next-nats/ratelimit";
+import { kv } from "@vercel/kv";
+import { Ratelimit } from "@upstash/ratelimit";
 
 export type LimitState = { lines: string[] };
 

@@ -2,7 +2,7 @@
 import "server-only";
 
 import { revalidatePath } from "next/cache";
-import { kv } from "@trogonstack/next-nats/kv";
+import { kv } from "@vercel/kv";
 
 export type KvState = { message: string };
 

@@ -2,7 +2,8 @@
 import "server-only";
 
 import { revalidatePath } from "next/cache";
-import { has, updateEdgeConfigItems } from "@trogonstack/next-nats/edge-config";
+import { has } from "@vercel/edge-config";
+import { updateEdgeConfigItems } from "@trogonstack/next-nats/edge-config";
 
 export type EdgeConfigState = { message: string };
 

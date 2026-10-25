@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
-import { digest, getAll } from "@trogonstack/next-nats/edge-config";
+import { digest, getAll } from "@vercel/edge-config";
 import { features } from "@/constants/features";
 import { DeleteForm, UpsertForm } from "./forms.client";
 

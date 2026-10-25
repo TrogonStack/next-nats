@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
-import { kv } from "@trogonstack/next-nats/kv";
+import { kv } from "@vercel/kv";
 import { features } from "@/constants/features";
 import { CounterForm, DeleteForm, ProfileForm, SetForm } from "./forms.client";
 

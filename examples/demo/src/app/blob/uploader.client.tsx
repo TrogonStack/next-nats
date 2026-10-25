@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { upload } from "@trogonstack/next-nats/blob/client";
+import { upload } from "@vercel/blob/client";
 
 export function Uploader() {
   const router = useRouter();

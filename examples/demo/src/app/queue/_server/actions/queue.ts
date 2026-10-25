@@ -1,7 +1,7 @@
 "use server";
 import "server-only";
 
-import { send } from "@trogonstack/next-nats/queue";
+import { send } from "@vercel/queue";
 import { DEMO_QUEUE_TOPIC } from "@/constants/demo";
 
 export type EnqueueState = { message: string };

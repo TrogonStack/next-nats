@@ -1,4 +1,4 @@
-import { handleCallback } from "@trogonstack/next-nats/queue";
+import { handleCallback } from "@vercel/queue";
 import { appendQueueLog } from "@/services/nats/demo-log";
 
 type Job = { text: string; fail?: boolean };

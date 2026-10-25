@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { kv } from "@trogonstack/next-nats/kv";
-import { Ratelimit } from "@trogonstack/next-nats/ratelimit";
+import { kv } from "@vercel/kv";
+import { Ratelimit } from "@upstash/ratelimit";
 import { rateLimited } from "@/services/nats/http-errors";
 
 const limiter = new Ratelimit({ redis: kv, limiter: Ratelimit.slidingWindow(5, "10 s"), prefix: "demo:route" });
