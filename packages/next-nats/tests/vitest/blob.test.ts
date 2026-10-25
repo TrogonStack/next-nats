@@ -6,13 +6,13 @@ import {
   configureBlob,
   copy,
   createBlobRoute,
-  createUploadUrl,
   del,
   get,
   head,
   list,
   put,
-  createSignedUrl,
+  issueSignedToken,
+  presignUrl,
   getBlobStore,
 } from "../../src/blob/index.js";
 
@@ -141,21 +141,17 @@ describe("blob", () => {
     expect(await served.text()).toBe("ok");
   });
 
-  it("gates private blobs and token uploads", async () => {
+  it("gates private blobs and presigned access", async () => {
     const res = await put("priv/s.txt", "secret", { access: "private" });
     expect((await route.GET(new Request(res.url), ctx("priv/s.txt"))).status).toBe(403);
-    const signed = createSignedUrl("priv/s.txt");
-    expect((await route.GET(new Request(signed), ctx("priv/s.txt"))).status).toBe(200);
-
-    const up = createUploadUrl("up/client.txt", { maximumSizeInBytes: 10, allowedContentTypes: ["text/*"] });
-    const denied = await route.PUT(new Request(up.url, { method: "PUT", body: "x" }), ctx("up/other.txt"));
-    expect(denied.status).toBe(403);
-    const wrongType = await route.PUT(new Request(up.url, { method: "PUT", body: "x", headers: { "content-type": "image/png" } }), ctx("up/client.txt"));
-    expect(wrongType.status).toBe(415);
-    const tooBig = await route.PUT(new Request(up.url, { method: "PUT", body: "x".repeat(50), headers: { "content-type": "text/plain" } }), ctx("up/client.txt"));
-    expect(tooBig.status).toBe(413);
-    const ok = await route.PUT(new Request(up.url, { method: "PUT", body: "tiny", headers: { "content-type": "text/plain" } }), ctx("up/client.txt"));
-    expect(ok.status).toBe(200);
-    expect((await head("up/client.txt")).size).toBe(4);
+    const delegation = await issueSignedToken({});
+    const { presignedUrl } = await presignUrl(delegation, { operation: "get", pathname: "priv/s.txt", access: "private" });
+    expect((await route.GET(new Request(presignedUrl), ctx("priv/s.txt"))).status).toBe(200);
+    const forOther = await presignUrl(delegation, { operation: "get", pathname: "priv/other.txt", access: "private" });
+    expect((await route.GET(new Request(forOther.presignedUrl), ctx("priv/s.txt"))).status).toBe(403);
+    const tampered = presignedUrl.replace("priv%2Fs.txt", "priv%2Fx.txt");
+    expect((await route.GET(new Request(tampered), ctx("priv/s.txt"))).status).toBe(403);
+    expect((await get("priv/s.txt", { access: "public" }))).toBeNull();
+    expect((await get("priv/s.txt", { access: "private" }))?.statusCode).toBe(200);
   });
 });

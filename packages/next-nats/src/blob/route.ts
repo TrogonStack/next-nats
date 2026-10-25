@@ -1,9 +1,35 @@
 import "server-only";
-import { sliceStream } from "./body.js";
-import { getBlobStore, describe, etagOf, matchesEtag, put, statBlob, del } from "./store.js";
+import { inferContentType, sliceStream } from "./body.js";
+import {
+  completeMultipartUpload,
+  createFolder,
+  createMultipartUpload,
+  del,
+  describe,
+  etagOf,
+  getBlobStore,
+  matchesEtag,
+  put,
+  statBlob,
+  uploadPart,
+} from "./store.js";
 import { publicErrorResponse } from "../errors.js";
-import { BlobError, BlobFileTooLargeError } from "./errors.js";
-import { verifyBlobToken, type BlobTokenPayload } from "./token.js";
+import {
+  BlobAccessError,
+  BlobContentTypeNotAllowedError,
+  BlobError,
+  BlobFileTooLargeError,
+  BlobPathnameMismatchError,
+} from "./errors.js";
+import {
+  CLIENT_TOKEN_PREFIX,
+  SIGNATURE_HEADER,
+  grantFromClientToken,
+  signCallbackBody,
+  verifyPresignedParams,
+  type Grant,
+} from "./token.js";
+import type { BlobAccessType, Part, PutBlobResult } from "./types.js";
 
 type RouteContext = { params: Promise<{ path?: string[] | string }> };
 
@@ -44,22 +70,87 @@ async function pathnameOf(ctx: RouteContext): Promise<string> {
   return segments.join("/");
 }
 
-function tokenFor(request: Request): BlobTokenPayload | null {
-  const token = new URL(request.url).searchParams.get("token");
-  if (!token) return null;
-  try {
-    return verifyBlobToken(token);
-  } catch {
-    return null;
+function bearerOf(request: Request): string | null {
+  const header = request.headers.get("authorization");
+  if (header?.toLowerCase().startsWith("bearer ")) return header.slice(7).trim();
+  return new URL(request.url).searchParams.get("token");
+}
+
+async function grantOf(request: Request): Promise<Grant | null> {
+  const bearer = bearerOf(request);
+  if (bearer?.startsWith(CLIENT_TOKEN_PREFIX)) return grantFromClientToken(bearer);
+  if (new URL(request.url).searchParams.has("delegationToken")) return verifyPresignedParams(new URL(request.url).searchParams);
+  return null;
+}
+
+function matchesContentType(contentType: string, allowed: string[]): boolean {
+  const type = contentType.split(";")[0]!.trim().toLowerCase();
+  return allowed.some((rule) => (rule.endsWith("/*") ? type.startsWith(rule.slice(0, -1).toLowerCase()) : type === rule.toLowerCase()));
+}
+
+function assertContentType(grant: Grant, contentType: string): void {
+  if (grant.allowedContentTypes?.length && !matchesContentType(contentType, grant.allowedContentTypes)) {
+    throw new BlobContentTypeNotAllowedError(`${contentType} is not allowed`);
   }
 }
 
+function statusOf(error: unknown): number | undefined {
+  if (error instanceof BlobFileTooLargeError) return 413;
+  if (error instanceof BlobContentTypeNotAllowedError) return 415;
+  return undefined;
+}
+
+function notifyUploadCompleted(grant: Grant, blob: PutBlobResult): void {
+  const target = grant.onUploadCompleted;
+  if (!target) return;
+  const body = JSON.stringify({
+    type: "blob.upload-completed",
+    payload: { blob, tokenPayload: target.tokenPayload ?? null },
+  });
+  void signCallbackBody(body)
+    .then((signature) =>
+      fetch(target.callbackUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json", [SIGNATURE_HEADER]: signature },
+        body,
+      }),
+    )
+    .catch(() => undefined);
+}
+
 export function createBlobRoute(options: BlobRouteOptions = {}) {
-  const permitted = async (request: Request, pathname: string, access: string, operation: "get" | "put") => {
-    const token = tokenFor(request);
-    if (token && token.operation === operation && token.pathname === pathname) return true;
-    if (options.authorize && (await options.authorize(request, pathname))) return true;
-    return operation === "get" && access === "public";
+  const guard = (handler: (request: Request, ctx: RouteContext) => Promise<Response>) => async (request: Request, ctx: RouteContext) => {
+    try {
+      return await handler(request, ctx);
+    } catch (error) {
+      if (error instanceof BlobError) return publicErrorResponse(error, { status: statusOf(error) });
+      throw error;
+    }
+  };
+
+  const authorizedByHook = async (request: Request, pathname: string) =>
+    options.authorize ? await options.authorize(request, pathname) : false;
+
+  const requireGrant = async (request: Request, pathname: string, operation: "put" | "delete"): Promise<Grant | null> => {
+    const grant = await grantOf(request);
+    if (grant) {
+      if (grant.operation !== operation) throw new BlobAccessError();
+      if (grant.pathname !== pathname) {
+        throw new BlobPathnameMismatchError(`tried to ${operation} "${pathname}", but the token was issued for "${grant.pathname}"`);
+      }
+      return grant;
+    }
+    if (await authorizedByHook(request, pathname)) return null;
+    throw new BlobAccessError();
+  };
+
+  const permitted = async (request: Request, pathname: string, access: BlobAccessType, method: "GET" | "HEAD") => {
+    if (access === "public") return true;
+    const grant = await grantOf(request).catch(() => null);
+    if (grant && grant.pathname === pathname && (grant.operation === "get" || (method === "HEAD" && grant.operation === "head"))) {
+      return true;
+    }
+    return authorizedByHook(request, pathname);
   };
 
   const serve = async (request: Request, ctx: RouteContext, method: "GET" | "HEAD"): Promise<Response> => {
@@ -68,7 +159,7 @@ export function createBlobRoute(options: BlobRouteOptions = {}) {
     const info = pathname ? await statBlob(pathname, store) : null;
     if (!info) return new Response("Not found", { status: 404 });
     const d = describe(info);
-    if (!(await permitted(request, pathname, d.access, "get"))) return new Response("Forbidden", { status: 403 });
+    if (!(await permitted(request, pathname, d.access, method))) return new Response("Forbidden", { status: 403 });
 
     const download = new URL(request.url).searchParams.has("download");
     const etag = etagOf(info);
@@ -113,48 +204,96 @@ export function createBlobRoute(options: BlobRouteOptions = {}) {
     return new Response(body, { status, headers });
   };
 
-  return {
-    GET: (request: Request, ctx: RouteContext) => serve(request, ctx, "GET"),
-    HEAD: (request: Request, ctx: RouteContext) => serve(request, ctx, "HEAD"),
-    async PUT(request: Request, ctx: RouteContext): Promise<Response> {
-      const pathname = await pathnameOf(ctx);
-      const token = tokenFor(request);
-      if (!token || token.operation !== "put" || token.pathname !== pathname) {
-        return new Response("Forbidden", { status: 403 });
-      }
-      const contentType = request.headers.get("content-type") ?? undefined;
-      if (token.allowedContentTypes?.length && !matches(contentType, token.allowedContentTypes)) {
-        return new Response("Content type not allowed", { status: 415 });
-      }
-      if (!request.body) return new Response("Body required", { status: 400 });
-      try {
-        const result = await put(pathname, request.body, {
-          access: "public",
-          contentType,
-          addRandomSuffix: token.addRandomSuffix,
-          allowOverwrite: token.allowOverwrite,
-          maximumSizeInBytes: token.maximumSizeInBytes,
-        });
-        return Response.json(result, { status: 200 });
-      } catch (error) {
-        if (error instanceof BlobError) {
-          return publicErrorResponse(error, { status: error instanceof BlobFileTooLargeError ? 413 : undefined });
-        }
-        throw error;
-      }
-    },
-    async DELETE(request: Request, ctx: RouteContext): Promise<Response> {
-      const pathname = await pathnameOf(ctx);
-      const allowed = options.authorize ? await options.authorize(request, pathname) : false;
-      if (!allowed) return new Response("Forbidden", { status: 403 });
-      await del(pathname);
-      return new Response(null, { status: 204 });
-    },
+  const accessOf = (request: Request, grant: Grant | null): BlobAccessType => {
+    const declared = request.headers.get("x-blob-access") ?? grant?.access;
+    return declared === "private" ? "private" : "public";
   };
-}
 
-function matches(contentType: string | undefined, allowed: string[]): boolean {
-  if (!contentType) return false;
-  const type = contentType.split(";")[0]!.trim().toLowerCase();
-  return allowed.some((rule) => (rule.endsWith("/*") ? type.startsWith(rule.slice(0, -1)) : type === rule.toLowerCase()));
+  const contentTypeOf = (request: Request, pathname: string): string =>
+    request.headers.get("x-content-type") ?? request.headers.get("content-type") ?? inferContentType(pathname);
+
+  return {
+    GET: guard((request, ctx) => serve(request, ctx, "GET")),
+    HEAD: guard((request, ctx) => serve(request, ctx, "HEAD")),
+
+    PUT: guard(async (request, ctx) => {
+      const pathname = await pathnameOf(ctx);
+      const grant = await requireGrant(request, pathname, "put");
+      if (!grant) throw new BlobAccessError();
+      const search = new URL(request.url).searchParams;
+      if (!request.body) return new Response("Body required", { status: 400 });
+
+      if (search.get("mpu") === "part") {
+        const part = await uploadPart(pathname, request.body, {
+          access: accessOf(request, grant),
+          key: search.get("key") ?? "",
+          uploadId: search.get("uploadId") ?? "",
+          partNumber: Number(search.get("partNumber")),
+        });
+        return Response.json(part);
+      }
+
+      const contentType = contentTypeOf(request, pathname);
+      assertContentType(grant, contentType);
+      const result = await put(pathname, request.body, {
+        access: accessOf(request, grant),
+        contentType,
+        addRandomSuffix: grant.addRandomSuffix,
+        allowOverwrite: grant.allowOverwrite,
+        cacheControlMaxAge: grant.cacheControlMaxAge,
+        ifMatch: grant.ifMatch,
+        maximumSizeInBytes: grant.maximumSizeInBytes,
+      });
+      notifyUploadCompleted(grant, result);
+      return Response.json(result);
+    }),
+
+    POST: guard(async (request, ctx) => {
+      const pathname = await pathnameOf(ctx);
+      if (new URL(request.url).searchParams.get("action") === "create-folder") {
+        if (!(await authorizedByHook(request, pathname))) throw new BlobAccessError();
+        return Response.json(await createFolder(pathname, { access: accessOf(request, null) }));
+      }
+      const grant = await requireGrant(request, pathname, "put");
+      if (!grant) throw new BlobAccessError();
+      const search = new URL(request.url).searchParams;
+      const access = accessOf(request, grant);
+
+      if (search.get("mpu") === "create") {
+        const contentType = contentTypeOf(request, pathname);
+        assertContentType(grant, contentType);
+        return Response.json(
+          await createMultipartUpload(pathname, {
+            access,
+            contentType,
+            addRandomSuffix: grant.addRandomSuffix,
+            allowOverwrite: grant.allowOverwrite,
+            cacheControlMaxAge: grant.cacheControlMaxAge,
+            ifMatch: grant.ifMatch,
+            maximumSizeInBytes: grant.maximumSizeInBytes,
+          }),
+        );
+      }
+
+      if (search.get("mpu") === "complete") {
+        const parts = (await request.json()) as Part[];
+        const result = await completeMultipartUpload(pathname, parts, {
+          access,
+          key: search.get("key") ?? "",
+          uploadId: search.get("uploadId") ?? "",
+        });
+        notifyUploadCompleted(grant, result);
+        return Response.json(result);
+      }
+
+      return new Response("Unknown multipart action", { status: 400 });
+    }),
+
+    DELETE: guard(async (request, ctx) => {
+      const pathname = await pathnameOf(ctx);
+      const grant = await requireGrant(request, pathname, "delete");
+      await del(pathname, { ifMatch: grant?.ifMatch });
+      return new Response(null, { status: 204 });
+    }),
+  };
 }

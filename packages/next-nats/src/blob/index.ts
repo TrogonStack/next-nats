@@ -1,10 +1,30 @@
 import "server-only";
 
-export { put, head, get, del, list, copy, rename, getBlobStore, blobUrl, blobDownloadUrl, resolvePathname } from "./store.js";
+export {
+  put,
+  putImage,
+  putFromUrl,
+  head,
+  get,
+  del,
+  list,
+  copy,
+  rename,
+  createFolder,
+  createMultipartUpload,
+  createMultipartUploader,
+  uploadPart,
+  completeMultipartUpload,
+  getDownloadUrl,
+  getBlobStore,
+  blobUrl,
+  blobDownloadUrl,
+  resolvePathname,
+} from "./store.js";
 export type {
-  BlobAccessType,
-  BlobCommandOptions,
   CopyBlobResult,
+  CopyCommandOptions,
+  DeleteCommandOptions,
   GetBlobResult,
   GetCommandOptions,
   HeadBlobResult,
@@ -13,11 +33,41 @@ export type {
   ListCommandOptions,
   ListCommandResult,
   ListFoldedBlobResult,
-  PutBlobResult,
   PutCommandOptions,
+  PutFromUrlBlobResult,
+  PutFromUrlCommandOptions,
+  PutImageBlobResult,
+  PutImageCommandOptions,
+  RenameBlobResult,
+  RenameCommandOptions,
 } from "./store.js";
-export type { PutBody } from "./body.js";
+export { issueSignedToken, presignUrl, parseStoreIdFromDelegationToken, parseStoreIdFromPresignedUrl } from "./token.js";
+export type {
+  BlobAccessType,
+  BlobClientTokenConstraintOptions,
+  BlobCommandOptions,
+  CompleteMultipartUploadCommandOptions,
+  CreateFolderCommandOptions,
+  CreateFolderResult,
+  DelegationOperation,
+  IssuedSignedToken,
+  IssueSignedTokenOptions,
+  OnUploadProgressCallback,
+  OptimizeImageOptions,
+  Part,
+  PartInput,
+  PresignDeleteUrlOptions,
+  PresignedUrlPayload,
+  PresignGetUrlOptions,
+  PresignHeadUrlOptions,
+  PresignPutUrlOptions,
+  PresignUrlOptions,
+  PresignUrlResult,
+  PutBlobResult,
+  PutBody,
+  UploadPartCommandOptions,
+  UploadProgressEvent,
+} from "./types.js";
 export { configureBlob, getBlobConfig, type BlobConfig } from "./config.js";
 export { createBlobRoute, parseRange, type BlobRouteOptions, type ByteRange } from "./route.js";
-export { signBlobToken, signedBlobToken, verifyBlobToken, createUploadUrl, createSignedUrl, type UploadUrlOptions, type SignedUrlOptions, type BlobOperation, type BlobTokenPayload } from "./token.js";
 export * from "./errors.js";

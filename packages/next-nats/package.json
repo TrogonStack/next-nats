@@ -28,6 +28,10 @@
       "types": "./dist/blob/index.d.ts",
       "default": "./dist/blob/index.js"
     },
+    "./blob/client": {
+      "types": "./dist/blob/client.d.ts",
+      "default": "./dist/blob/client.js"
+    },
     "./queue": {
       "types": "./dist/queue/index.d.ts",
       "default": "./dist/queue/index.js"

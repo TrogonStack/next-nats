@@ -1,4 +1,4 @@
-import { inspect } from "node:util";
+const INSPECT_CUSTOM = Symbol.for("nodejs.util.inspect.custom");
 
 const SECRET_SYNTAX = /^secret:(?:[a-z0-9-]*):(?:[a-z0-9-]*):(.+)$/s;
 const REDACTED = "[REDACTED]";
@@ -32,7 +32,7 @@ export class Secret {
     return REDACTED;
   }
 
-  [inspect.custom](): string {
+  [INSPECT_CUSTOM](): string {
     return `Secret(${REDACTED})`;
   }
 }
