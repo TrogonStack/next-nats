@@ -195,22 +195,53 @@ function defaultConnectionString(): string {
   return process.env.EDGE_CONFIG ?? `${SCHEME}id=${process.env.NEXT_NATS_EDGE_CONFIG_BUCKET ?? DEFAULT_BUCKET}`;
 }
 
-export function parseConnectionString(connectionString: string): Connection | null {
+function fromVercelUrl(text: string): Connection | null {
   try {
-    if (!connectionString.startsWith(SCHEME)) return null;
-    const params = new URLSearchParams(connectionString.slice(SCHEME.length));
-    const id = params.get("id");
-    if (!id) return null;
-    return {
-      type: "external",
-      baseUrl: `${SCHEME}${id}`,
-      id,
-      token: params.get("token") ?? "",
-      version: params.get("version") || "1",
-    };
+    const url = new URL(text);
+    if (url.host !== "edge-config.vercel.com" || url.protocol !== "https:" || !url.pathname.startsWith("/ecfg")) return null;
+    const id = url.pathname.split("/")[1];
+    const token = url.searchParams.get("token");
+    if (!id || !token) return null;
+    return { type: "vercel", baseUrl: `https://edge-config.vercel.com/${id}`, id, version: "1", token };
   } catch {
     return null;
   }
+}
+
+function fromQueryParams(text: string): Connection | null {
+  if (!text.startsWith(SCHEME)) return null;
+  const params = new URLSearchParams(text.slice(SCHEME.length));
+  const id = params.get("id");
+  const token = params.get("token");
+  if (!id || !token) return null;
+  return { type: "vercel", baseUrl: `https://edge-config.vercel.com/${id}`, id, version: "1", token };
+}
+
+function fromExternalUrl(text: string): Connection | null {
+  try {
+    const url = new URL(text);
+    let id = url.searchParams.get("id");
+    const token = url.searchParams.get("token");
+    const version = url.searchParams.get("version") || "1";
+    if (!id || url.pathname.startsWith("/ecfg_")) id = url.pathname.split("/")[1] || null;
+    if (!id || !token) return null;
+    url.search = "";
+    return { type: "external", baseUrl: url.toString(), id, token, version };
+  } catch {
+    return null;
+  }
+}
+
+function fromBucketId(text: string): Connection | null {
+  if (!text.startsWith(SCHEME)) return null;
+  const params = new URLSearchParams(text.slice(SCHEME.length));
+  const id = params.get("id");
+  if (!id) return null;
+  return { type: "external", baseUrl: `${SCHEME}${id}`, id, token: "", version: params.get("version") || "1" };
+}
+
+export function parseConnectionString(connectionString: string): Connection | null {
+  return fromQueryParams(connectionString) ?? fromVercelUrl(connectionString) ?? fromExternalUrl(connectionString) ?? fromBucketId(connectionString);
 }
 
 function assertIsKey(key: unknown): asserts key is string {
@@ -247,7 +278,7 @@ export function createClient(connectionString: string | undefined, _options: Edg
       return value === undefined ? undefined : (clone(value) as T);
     },
     async getAll<T = EdgeConfigItems>(keys?: (keyof T)[], opts?: EdgeConfigFunctionsOptions) {
-      if (keys !== undefined) assertIsKeys(keys);
+      if (keys) assertIsKeys(keys);
       const all = opts?.consistentRead ? await readAll(await openKv(bucket)) : (await mirrorFor(bucket)).all();
       if (!keys) return clone(all) as T;
       return clone(Object.fromEntries(keys.filter((k) => String(k) in all).map((k) => [k, all[String(k)]]))) as T;
@@ -285,6 +316,29 @@ export const getAll: EdgeConfigClient["getAll"] = (...args) => client().getAll(.
 export const has: EdgeConfigClient["has"] = (...args) => client().has(...args);
 export const digest: EdgeConfigClient["digest"] = (...args) => client().digest(...args);
 
+const ITEM_KEY = /^[A-Za-z0-9_-]{1,256}$/;
+
+async function preflight(kv: KV, items: EdgeConfigItemOperation[]): Promise<void> {
+  const present = new Map<string, boolean>();
+  for (const item of items) {
+    if (!ITEM_KEY.test(item.key)) {
+      throw new EdgeConfigError(`Invalid item key "${item.key}"`, { reason: "INVALID_KEY" });
+    }
+    if (!present.has(item.key)) {
+      const entry = await kv.get(encodeKey(item.key));
+      present.set(item.key, entry !== null && entry.operation === "PUT");
+    }
+    const exists = present.get(item.key)!;
+    if (item.operation === "create" && exists) {
+      throw new EdgeConfigError(`Item "${item.key}" already exists`, { code: Code.ALREADY_EXISTS, reason: "ITEM_EXISTS" });
+    }
+    if ((item.operation === "update" || item.operation === "delete") && !exists) {
+      throw new EdgeConfigError(`Cannot ${item.operation} missing item "${item.key}"`, { code: Code.NOT_FOUND, reason: "ITEM_NOT_FOUND" });
+    }
+    present.set(item.key, item.operation !== "delete");
+  }
+}
+
 export async function updateEdgeConfigItems(
   connectionString: string | undefined,
   { items }: UpdateEdgeConfigItemsOptions,
@@ -292,6 +346,7 @@ export async function updateEdgeConfigItems(
   const connection = parseConnectionString(connectionString ?? defaultConnectionString());
   if (!connection) throw new Error("@vercel/edge-config: Invalid connection string provided");
   const kv = await openKv(connection.id);
+  await preflight(kv, items);
   for (const item of items) {
     const key = encodeKey(item.key);
     if (item.operation === "delete") {
