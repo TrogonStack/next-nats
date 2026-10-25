@@ -1,3 +1,5 @@
 import { createUseCacheHandler } from "./use-cache.js";
 
-export default createUseCacheHandler();
+export const useCacheHandler = createUseCacheHandler();
+
+export default useCacheHandler;

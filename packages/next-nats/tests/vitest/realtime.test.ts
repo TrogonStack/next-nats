@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { closeNats, connectNats, getNats } from "../src/connection.js";
-import { corePublish, jsPublish } from "../src/publish.js";
-import { ensureStream } from "../src/streams.js";
-import { formatSseEvent } from "../src/realtime/sse.js";
-import { sseFromStream, sseFromSubject } from "../src/realtime/index.js";
+import { closeNats, connectNats, getNats } from "../../src/connection.js";
+import { corePublish, jsPublish } from "../../src/publish.js";
+import { ensureStream } from "../../src/streams.js";
+import { formatSseEvent } from "../../src/realtime/sse.js";
+import { sseFromStream, sseFromSubject } from "../../src/realtime/index.js";
 
 const run = Math.random().toString(36).slice(2, 8);
 const STREAM = `RT_${run}`;

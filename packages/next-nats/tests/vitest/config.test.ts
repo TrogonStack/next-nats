@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { authFromEnv, decodeCreds, parseServers, resolveConfig } from "../src/config.js";
-import { bucketName, subject } from "../src/values.js";
+import { authFromEnv, decodeCreds, parseServers, resolveConfig } from "../../src/config.js";
+import { bucketName, subject } from "../../src/values.js";
 
 describe("config", () => {
   it("defaults", () => {

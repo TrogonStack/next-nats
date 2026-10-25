@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { closeNats, connectNats, getNats } from "../src/connection.js";
-import { createKv, decodeKey, encodeKey, KvError } from "../src/kv/index.js";
+import { closeNats, connectNats, getNats } from "../../src/connection.js";
+import { createKv, decodeKey, encodeKey, KvError } from "../../src/kv/index.js";
 
 const run = Math.random().toString(36).slice(2, 8);
 const BUCKET = `kvt_${run}`;

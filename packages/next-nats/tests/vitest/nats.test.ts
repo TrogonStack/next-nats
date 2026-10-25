@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AckPolicy } from "@nats-io/jetstream";
-import { codec } from "../src/codec.js";
-import { closeNats, connectNats, getNats, openKv } from "../src/connection.js";
-import { defineConsumer, stopAllConsumers } from "../src/consumer.js";
-import { ensureStream } from "../src/streams.js";
-import { checkHealth } from "../src/health/index.js";
-import { corePublish, jsPublish, request } from "../src/publish.js";
+import { codec } from "../../src/codec.js";
+import { closeNats, connectNats, getNats, openKv } from "../../src/connection.js";
+import { defineConsumer, stopAllConsumers } from "../../src/consumer.js";
+import { ensureStream } from "../../src/streams.js";
+import { checkHealth } from "../../src/health/index.js";
+import { corePublish, jsPublish, request } from "../../src/publish.js";
 
 const run = Math.random().toString(36).slice(2, 8);
 const STREAM = `T_${run}`;

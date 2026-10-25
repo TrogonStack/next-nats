@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { CacheEntry } from "next/cache.js";
-import { closeNats, connectNats, getNats } from "../src/connection.js";
-import { createIncrementalCacheHandler, createUseCacheHandler, bucketNames } from "../src/cache/index.js";
-import { pack, unpack } from "../src/cache/pack.js";
+import { closeNats, connectNats, getNats } from "../../src/connection.js";
+import { createIncrementalCacheHandler, createUseCacheHandler, bucketNames } from "../../src/cache/index.js";
+import { pack, unpack } from "../../src/cache/pack.js";
 
 const run = Math.random().toString(36).slice(2, 8);
 const namespace = `t_cache_${run}`;

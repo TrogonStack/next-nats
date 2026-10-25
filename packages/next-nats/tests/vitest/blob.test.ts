@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createHash, randomBytes } from "node:crypto";
-import { closeNats, connectNats, getNats } from "../src/connection.js";
+import { closeNats, connectNats, getNats } from "../../src/connection.js";
 import {
   BlobNotFoundError,
   configureBlob,
@@ -14,7 +14,7 @@ import {
   put,
   createSignedUrl,
   getBlobStore,
-} from "../src/blob/index.js";
+} from "../../src/blob/index.js";
 
 const run = Math.random().toString(36).slice(2, 8);
 const bucket = `blob_${run}`;

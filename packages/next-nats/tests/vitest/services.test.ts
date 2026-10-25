@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { closeNats, connectNats } from "../src/connection.js";
+import { closeNats, connectNats } from "../../src/connection.js";
 import {
   defineService,
   discover,
@@ -8,7 +8,7 @@ import {
   serviceClient,
   ServiceCallError,
   stopAllServices,
-} from "../src/services/index.js";
+} from "../../src/services/index.js";
 
 const run = Math.random().toString(36).slice(2, 8);
 

@@ -1,3 +1,5 @@
 import { NatsIncrementalCacheHandler } from "./incremental.js";
 
-export default class NatsCacheHandler extends NatsIncrementalCacheHandler {}
+export class NatsCacheHandler extends NatsIncrementalCacheHandler {}
+
+export default NatsCacheHandler;

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { closeNats, connectNats, getNats } from "../src/connection.js";
-import { createKv } from "../src/kv/index.js";
-import { Ratelimit, toMs } from "../src/ratelimit/index.js";
+import { closeNats, connectNats, getNats } from "../../src/connection.js";
+import { createKv } from "../../src/kv/index.js";
+import { Ratelimit, toMs } from "../../src/ratelimit/index.js";
 
 const run = Math.random().toString(36).slice(2, 8);
 const BUCKET = `rl_${run}`;

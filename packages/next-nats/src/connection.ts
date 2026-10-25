@@ -177,7 +177,7 @@ export interface OpenKvOptions {
   create?: boolean;
   history?: number;
   ttl?: number;
-  markerTTL?: number;
+  markerTtl?: number;
   maxBytes?: number;
   replicas?: number;
   description?: string;
@@ -189,7 +189,8 @@ export async function openKv(bucket: BucketName | string, opts: OpenKvOptions = 
   const key = `${name}:${opts.create ?? true}`;
   let kv = kvCache.get(key);
   if (!kv) {
-    const { create = true, ...kvOpts } = opts;
+    const { create = true, markerTtl, ...rest } = opts;
+    const kvOpts = { ...rest, ...(markerTtl !== undefined && { markerTTL: markerTtl }) };
     const kvm = await getKvm();
     kv = create ? kvm.create(name, kvOpts) : kvm.open(name);
     kvCache.set(key, kv);

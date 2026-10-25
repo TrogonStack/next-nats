@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { closeNats, connectNats, getNats } from "../src/connection.js";
-import { createQueueClient, type MessageMetadata } from "../src/queue/index.js";
+import { closeNats, connectNats, getNats } from "../../src/connection.js";
+import { createQueueClient, type MessageMetadata } from "../../src/queue/index.js";
 
 const run = Math.random().toString(36).slice(2, 8);
 const stream = `Q_${run}`;

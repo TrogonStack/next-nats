@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { closeNats, connectNats, getNats } from "../src/connection.js";
-import { createCronRuntime, listCronRuns, nextOccurrence, validateSchedule } from "../src/cron/index.js";
+import { closeNats, connectNats, getNats } from "../../src/connection.js";
+import { createCronRuntime, listCronRuns, nextOccurrence, validateSchedule } from "../../src/cron/index.js";
 
 const run = Math.random().toString(36).slice(2, 8);
 const stream = `CRON_${run}`;

@@ -17,7 +17,7 @@ export interface KvStoreOptions {
   history?: number;
   maxBytes?: number;
   replicas?: number;
-  markerTTL?: number;
+  markerTtl?: number;
   maxRetries?: number;
 }
 
@@ -59,7 +59,7 @@ export class KvStore {
 
   private open(): Promise<Handle> {
     this.handle ??= (async () => {
-      const { bucket, history, maxBytes, replicas, markerTTL } = this.options;
+      const { bucket, history, maxBytes, replicas, markerTtl } = this.options;
       let kv: KV;
       let status: Awaited<ReturnType<KV["status"]>>;
       try {
@@ -68,7 +68,7 @@ export class KvStore {
       } catch {
         kv = await openKv(bucket, {
           create: true,
-          markerTTL: markerTTL ?? 1000,
+          markerTtl: markerTtl ?? 1000,
           ...(history !== undefined && { history }),
           ...(maxBytes !== undefined && { maxBytes }),
           ...(replicas !== undefined && { replicas }),
