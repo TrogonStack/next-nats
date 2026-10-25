@@ -16,9 +16,17 @@ await kv.hset("session:1", { theme: "dark" });
 `kv` reads `NEXT_NATS_KV_BUCKET` and falls back to `kv`. For a second bucket:
 
 ```ts
-import { createKv } from "@trogonstack/next-nats/kv";
+import { createClient } from "@trogonstack/next-nats/kv";
 
-const sessions = createKv({ bucket: "sessions" });
+const sessions = createClient({ bucket: "sessions" });
+```
+
+## Iterate keys
+
+```ts
+for await (const key of kv.scanIterator({ match: "user:*" })) {
+  console.log(key);
+}
 ```
 
 ## Set only when absent
@@ -29,4 +37,4 @@ const created = await kv.set("lock:report", "me", { nx: true, ex: 30 });
 
 ## Check what is supported
 
-Not every Redis command exists. The [KV reference](../references/kv.md) lists the supported commands and the semantic differences.
+`kv` is a `Redis` client from `@trogonstack/next-nats/redis`, so the [Redis reference](../references/redis.md) lists the supported commands and the differences.

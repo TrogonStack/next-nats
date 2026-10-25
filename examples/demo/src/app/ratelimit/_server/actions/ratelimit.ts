@@ -1,14 +1,15 @@
 "use server";
 import "server-only";
 
+import { kv } from "@trogonstack/next-nats/kv";
 import { Ratelimit } from "@trogonstack/next-nats/ratelimit";
 
 export type LimitState = { lines: string[] };
 
 const limiters = {
-  sliding: new Ratelimit({ limiter: Ratelimit.slidingWindow(5, "10 s"), prefix: "demo:sliding" }),
-  fixed: new Ratelimit({ limiter: Ratelimit.fixedWindow(5, "10 s"), prefix: "demo:fixed" }),
-  bucket: new Ratelimit({ limiter: Ratelimit.tokenBucket(1, "2 s", 5), prefix: "demo:bucket" }),
+  sliding: new Ratelimit({ redis: kv, limiter: Ratelimit.slidingWindow(5, "10 s"), prefix: "demo:sliding" }),
+  fixed: new Ratelimit({ redis: kv, limiter: Ratelimit.fixedWindow(5, "10 s"), prefix: "demo:fixed" }),
+  bucket: new Ratelimit({ redis: kv, limiter: Ratelimit.tokenBucket(1, "2 s", 5), prefix: "demo:bucket" }),
 };
 
 export async function hit(prev: LimitState, data: FormData): Promise<LimitState> {

@@ -4,7 +4,7 @@
 - The cache has a bucket-wide TTL, not a per-key one, and stale tag records are not pruned.
 - A `'use cache'` result computed during `next build` can be served from the build output until its key changes.
 - `NATS_WORKERS` is all or nothing per process.
-- KV operations are atomic per key only. Multi-key commands are not transactions. The [KV reference](../references/kv.md) lists the other differences from Redis.
+- Single-key KV operations are atomic, and `multi()` and multi-key commands are atomic when the server supports JetStream atomic batch publish (nats-server 2.12 or later), limited to 1000 keys. Scripting is unavailable. The [Redis reference](../references/redis.md) lists the other differences from Redis.
 - Edge Config reads may lag a write by the time the watcher takes to deliver it. Use `consistentRead` when that matters.
 - Edge Config writes through `updateEdgeConfigItems` apply in order and are not atomic, unlike the Vercel REST call. The client options `staleIfError`, `disableDevelopmentCache` and `cache` are accepted and ignored. `setTracerProvider` does nothing.
 - Vercel cron calls from `vercel.json` run exactly once per tick across replicas, where Vercel delivery is best effort and can miss or duplicate a run.

@@ -21,10 +21,11 @@ export async function setKey(_prev: KvState, data: FormData): Promise<KvState> {
   if (!key) return { message: "Key is required" };
   const ex = Number(text(data, "ex"));
   const nx = data.get("nx") === "on";
-  const result = await kv.set(key, parse(text(data, "value")), {
-    ...(ex > 0 && { ex }),
-    ...(nx && { nx: true }),
-  });
+  const value = parse(text(data, "value"));
+  const result =
+    ex > 0 ? (nx ? await kv.set(key, value, { ex, nx: true }) : await kv.set(key, value, { ex }))
+    : nx ? await kv.set(key, value, { nx: true })
+    : await kv.set(key, value);
   revalidatePath("/kv");
   return { message: result === "OK" ? `SET ${key} OK${ex > 0 ? ` (expires in ${ex}s)` : ""}` : `SET ${key} skipped (key exists)` };
 }
