@@ -3,7 +3,7 @@
 Replace `@vercel/kv` with a NATS KV bucket.
 
 ```ts
-import { kv } from "next-nats/kv";
+import { kv } from "@trogonstack/next-nats/kv";
 
 await kv.set("user:1", { name: "ada" }, { ex: 60 });
 const user = await kv.get<{ name: string }>("user:1");
@@ -16,7 +16,7 @@ await kv.hset("session:1", { theme: "dark" });
 `kv` reads `NEXT_NATS_KV_BUCKET` and falls back to `kv`. For a second bucket:
 
 ```ts
-import { createKv } from "next-nats/kv";
+import { createKv } from "@trogonstack/next-nats/kv";
 
 const sessions = createKv({ bucket: "sessions" });
 ```

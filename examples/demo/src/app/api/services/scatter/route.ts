@@ -1,5 +1,5 @@
 import { connection } from "next/server";
-import { toPublicError } from "next-nats";
+import { toPublicError } from "@trogonstack/next-nats";
 import { prober } from "@/services/nats/service-clients";
 
 export async function GET() {

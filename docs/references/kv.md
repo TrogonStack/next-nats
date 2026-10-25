@@ -1,9 +1,9 @@
-# next-nats/kv
+# @trogonstack/next-nats/kv
 
 A client shaped like `@vercel/kv` and the Upstash Redis client, stored in a NATS KV bucket.
 
 ```ts
-import { kv, createKv } from "next-nats/kv";
+import { kv, createKv } from "@trogonstack/next-nats/kv";
 
 await kv.set("user:1", { name: "ada" }, { ex: 60 });
 await kv.incr("hits");

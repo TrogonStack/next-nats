@@ -1,4 +1,4 @@
-import { openKv } from "next-nats";
+import { openKv } from "@trogonstack/next-nats";
 
 const BUCKET = "demo_queue_log";
 

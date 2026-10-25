@@ -4,20 +4,20 @@ Two route handler modules report process state for orchestrator probes. Neither 
 
 | Import | Exports | Probe |
 | --- | --- | --- |
-| `next-nats/health/readiness` | `GET` | Readiness |
-| `next-nats/health/liveness` | `GET` | Liveness |
-| `next-nats/health` | `createReadinessHandler`, `createLivenessHandler`, `readinessChecks`, `livenessChecks`, `DEFAULT_READINESS_GRACE_MS`, `HealthCheck`, `ReadinessOptions`, `LivenessOptions` | Custom options |
+| `@trogonstack/next-nats/health/readiness` | `GET` | Readiness |
+| `@trogonstack/next-nats/health/liveness` | `GET` | Liveness |
+| `@trogonstack/next-nats/health` | `createReadinessHandler`, `createLivenessHandler`, `readinessChecks`, `livenessChecks`, `DEFAULT_READINESS_GRACE_MS`, `HealthCheck`, `ReadinessOptions`, `LivenessOptions` | Custom options |
 
 ## Mounting
 
 ```ts
 // app/-/readiness/route.ts
-export { GET } from "next-nats/health/readiness";
+export { GET } from "@trogonstack/next-nats/health/readiness";
 ```
 
 ```ts
 // app/-/liveness/route.ts
-export { GET } from "next-nats/health/liveness";
+export { GET } from "@trogonstack/next-nats/health/liveness";
 ```
 
 ## Checks

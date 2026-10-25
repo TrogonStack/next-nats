@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "next": "16.4.3",
-    "next-nats": "workspace:*",
+    "@trogonstack/next-nats": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

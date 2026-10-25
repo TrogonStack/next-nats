@@ -2,7 +2,7 @@
 
 ## withNats
 
-`withNats(nextConfig, options)` from `next-nats/next` returns a Next.js config.
+`withNats(nextConfig, options)` from `@trogonstack/next-nats/next` returns a Next.js config.
 
 - Adds the NATS packages to `serverExternalPackages` (`NATS_EXTERNAL_PACKAGES`).
 - With `cache` set, installs the handlers and sets `cacheMaxMemorySize` to `0`.
@@ -17,7 +17,7 @@
 
 `USE_CACHE_HANDLER_PATH` and `INCREMENTAL_HANDLER_PATH` are the resolved handler module paths.
 
-## next-nats/cache
+## @trogonstack/next-nats/cache
 
 | Export | Description |
 | --- | --- |

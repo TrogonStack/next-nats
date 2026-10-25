@@ -4,7 +4,7 @@ Vercel platform primitives for self-hosted Next.js, running on NATS and JetStrea
 
 ```ts
 // next.config.ts
-import { withNats } from "next-nats/next";
+import { withNats } from "@trogonstack/next-nats/next";
 
 export default withNats({ cacheComponents: true }, { cache: true });
 ```
@@ -13,16 +13,16 @@ export default withNats({ cacheComponents: true }, { cache: true });
 
 | Vercel primitive | Import |
 | --- | --- |
-| KV | `next-nats/kv` |
-| Blob | `next-nats/blob` |
-| Queues | `next-nats/queue` |
-| Edge Config | `next-nats/edge-config` |
-| Data Cache and `use cache` | `next-nats/cache`, wired by `next-nats/next` |
-| Rate limiting | `next-nats/ratelimit` |
-| Realtime and streaming | `next-nats/realtime` |
-| Services and RPC | `next-nats/services` |
-| Cron Jobs | `next-nats/cron` |
-| Health | `next-nats/health` |
+| KV | `@trogonstack/next-nats/kv` |
+| Blob | `@trogonstack/next-nats/blob` |
+| Queues | `@trogonstack/next-nats/queue` |
+| Edge Config | `@trogonstack/next-nats/edge-config` |
+| Data Cache and `use cache` | `@trogonstack/next-nats/cache`, wired by `@trogonstack/next-nats/next` |
+| Rate limiting | `@trogonstack/next-nats/ratelimit` |
+| Realtime and streaming | `@trogonstack/next-nats/realtime` |
+| Services and RPC | `@trogonstack/next-nats/services` |
+| Cron Jobs | `@trogonstack/next-nats/cron` |
+| Health | `@trogonstack/next-nats/health` |
 
 ## Quick start
 

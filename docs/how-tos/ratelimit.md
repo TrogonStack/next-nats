@@ -3,7 +3,7 @@
 Replace `@upstash/ratelimit` with counters in a NATS KV bucket.
 
 ```ts
-import { Ratelimit } from "next-nats/ratelimit";
+import { Ratelimit } from "@trogonstack/next-nats/ratelimit";
 
 const limiter = new Ratelimit({ limiter: Ratelimit.slidingWindow(5, "10 s"), prefix: "api" });
 

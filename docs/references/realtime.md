@@ -1,6 +1,6 @@
 # Realtime
 
-## Server, next-nats/realtime
+## Server, @trogonstack/next-nats/realtime
 
 | Export | Description |
 | --- | --- |
@@ -15,6 +15,6 @@ Stream options add `stream` (required), `filterSubjects`, `deliver` and `inactiv
 
 A `RealtimeMessage` carries `subject`, decoded `data`, raw `payload`, `headers`, and for streams `seq` and `timestamp`.
 
-## Client, next-nats/realtime/client
+## Client, @trogonstack/next-nats/realtime/client
 
 `useNatsEvents({ url, events?, limit?, enabled?, withCredentials?, minDelay?, maxDelay?, onParse?, onEvent? })` returns `{ events, status, lastEventId, clear }`. `status` is `connecting`, `open` or `closed`. Passing `url: null` disconnects. Reconnects back off between `minDelay` and `maxDelay` and send the last event id.

@@ -1,6 +1,6 @@
 # Blob
 
-Exports of `next-nats/blob`. The shapes follow `@vercel/blob`.
+Exports of `@trogonstack/next-nats/blob`. The shapes follow `@vercel/blob`.
 
 ## Commands
 

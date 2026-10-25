@@ -3,7 +3,7 @@
 Run a handler on a schedule exactly once across all replicas.
 
 ```ts
-import { defineCron } from "next-nats/cron";
+import { defineCron } from "@trogonstack/next-nats/cron";
 
 defineCron({
   name: "heartbeat",
@@ -24,7 +24,7 @@ Define jobs in the module loaded by `registerNats`, on processes where `NATS_WOR
 ## Trigger by hand
 
 ```ts
-import { triggerCron } from "next-nats/cron";
+import { triggerCron } from "@trogonstack/next-nats/cron";
 
 const { duplicate } = await triggerCron("heartbeat");
 ```
@@ -34,7 +34,7 @@ const { duplicate } = await triggerCron("heartbeat");
 ## List recent runs
 
 ```ts
-import { listCronRuns } from "next-nats/cron";
+import { listCronRuns } from "@trogonstack/next-nats/cron";
 
 const runs = await listCronRuns();
 ```

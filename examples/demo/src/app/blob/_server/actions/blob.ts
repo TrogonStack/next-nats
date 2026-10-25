@@ -2,7 +2,7 @@
 import "server-only";
 
 import { revalidatePath } from "next/cache";
-import { createUploadUrl, del } from "next-nats/blob";
+import { createUploadUrl, del } from "@trogonstack/next-nats/blob";
 
 export async function requestUpload(pathname: string, contentType: string): Promise<{ url: string }> {
   const { url } = createUploadUrl(pathname, {

@@ -20,12 +20,12 @@ importers:
 
   examples/demo:
     dependencies:
+      '@trogonstack/next-nats':
+        specifier: workspace:*
+        version: link:../../packages/next-nats
       next:
         specifier: 16.4.3
         version: 16.4.3(@types/node@24.19.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      next-nats:
-        specifier: workspace:*
-        version: link:../../packages/next-nats
       react:
         specifier: ^19.0.0
         version: 19.3.1

@@ -1,5 +1,5 @@
 import { connection } from "next/server";
-import { createBlobRoute } from "next-nats/blob";
+import { createBlobRoute } from "@trogonstack/next-nats/blob";
 
 const route = createBlobRoute();
 

@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
-import { discover } from "next-nats/services";
+import { discover } from "@trogonstack/next-nats/services";
 import { features } from "@/constants/features";
 import { CalcForm, ScatterButton } from "./form.client";
 

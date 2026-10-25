@@ -1,5 +1,5 @@
 import { connection } from "next/server";
-import { listCronRuns, triggerCron } from "next-nats/cron";
+import { listCronRuns, triggerCron } from "@trogonstack/next-nats/cron";
 
 export async function GET() {
   await connection();

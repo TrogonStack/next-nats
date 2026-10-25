@@ -5,7 +5,7 @@ Build request/reply services on NATS micro.
 ## Define
 
 ```ts
-import { defineService, endpoint, EndpointError } from "next-nats/services";
+import { defineService, endpoint, EndpointError } from "@trogonstack/next-nats/services";
 
 export const calculator = defineService({
   name: "calculator",
@@ -28,7 +28,7 @@ export const calculator = defineService({
 ## Call
 
 ```ts
-import { serviceClient } from "next-nats/services";
+import { serviceClient } from "@trogonstack/next-nats/services";
 
 const calc = serviceClient(calculator);
 const { result } = await calc.divide({ a: 6, b: 3 });
@@ -49,7 +49,7 @@ Each answer is `{ ok: true, value }` or `{ ok: false, error }`.
 ## Discover what is running
 
 ```ts
-import { discover } from "next-nats/services";
+import { discover } from "@trogonstack/next-nats/services";
 
 const { ping, info, stats } = await discover({ name: "calculator" });
 ```

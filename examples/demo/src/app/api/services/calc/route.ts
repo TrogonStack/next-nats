@@ -1,6 +1,6 @@
 import { connection } from "next/server";
-import { publicErrorResponse } from "next-nats";
-import { ServiceCallError } from "next-nats/services";
+import { publicErrorResponse } from "@trogonstack/next-nats";
+import { ServiceCallError } from "@trogonstack/next-nats/services";
 import { badRequest, readJson } from "@/services/nats/http-errors";
 import { calc } from "@/services/nats/service-clients";
 

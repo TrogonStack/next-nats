@@ -193,7 +193,7 @@ export function toSpecError(error: unknown): SpecError {
   if (error instanceof SpecError) return error;
   return new SpecError({
     code: Code.INTERNAL,
-    domain: "next-nats",
+    domain: "@trogonstack/next-nats",
     reason: "UNHANDLED",
     message: GENERIC_MESSAGE,
     visibility: Visibility.INTERNAL,

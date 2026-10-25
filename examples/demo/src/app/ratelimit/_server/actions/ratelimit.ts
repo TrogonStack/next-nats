@@ -1,7 +1,7 @@
 "use server";
 import "server-only";
 
-import { Ratelimit } from "next-nats/ratelimit";
+import { Ratelimit } from "@trogonstack/next-nats/ratelimit";
 
 export type LimitState = { lines: string[] };
 

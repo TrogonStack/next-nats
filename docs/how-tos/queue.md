@@ -5,7 +5,7 @@ Replace Vercel Queues with a JetStream stream and pull consumers.
 ## Send
 
 ```ts
-import { send } from "next-nats/queue";
+import { send } from "@trogonstack/next-nats/queue";
 
 await send("orders", { id: "o_1" }, { idempotencyKey: "o_1", delaySeconds: 10 });
 ```
@@ -17,7 +17,7 @@ await send("orders", { id: "o_1" }, { idempotencyKey: "o_1", delaySeconds: 10 })
 Register handlers where workers run, for example in the module loaded by `registerNats`:
 
 ```ts
-import { subscribe } from "next-nats/queue";
+import { subscribe } from "@trogonstack/next-nats/queue";
 
 subscribe<{ id: string }>(
   "orders",
@@ -40,7 +40,7 @@ Replicas that share a consumer group split the messages. A handler that throws i
 For subjects outside the queue, with dead letters, use `defineConsumer`:
 
 ```ts
-import { defineConsumer, ensureStream } from "next-nats";
+import { defineConsumer, ensureStream } from "@trogonstack/next-nats";
 
 await ensureStream({ name: "EVENTS", subjects: ["events.>", "events.dlq"] });
 

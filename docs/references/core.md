@@ -1,6 +1,6 @@
 # Core
 
-Exports of `next-nats`.
+Exports of `@trogonstack/next-nats`.
 
 ## Connection
 

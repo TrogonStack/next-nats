@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useNatsEvents } from "next-nats/realtime/client";
+import { useNatsEvents } from "@trogonstack/next-nats/realtime/client";
 
 interface Cursor {
   id: string;

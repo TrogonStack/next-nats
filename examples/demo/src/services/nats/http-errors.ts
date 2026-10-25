@@ -1,4 +1,4 @@
-import { Code, InvalidArgumentError, publicErrorResponse, SpecError, Visibility } from "next-nats";
+import { Code, InvalidArgumentError, publicErrorResponse, SpecError, Visibility } from "@trogonstack/next-nats";
 
 const DOMAIN = "demo.api";
 

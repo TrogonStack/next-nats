@@ -1,6 +1,6 @@
-import { defineConsumer, ensureStream, getLogger } from "next-nats";
-import { defineCron } from "next-nats/cron";
-import { subscribe } from "next-nats/queue";
+import { defineConsumer, ensureStream, getLogger } from "@trogonstack/next-nats";
+import { defineCron } from "@trogonstack/next-nats/cron";
+import { subscribe } from "@trogonstack/next-nats/queue";
 import { DEMO_DLQ, DEMO_QUEUE_GROUP, DEMO_QUEUE_TOPIC, DEMO_STREAM, DEMO_SUBJECT } from "@/constants/demo";
 import { appendQueueLog } from "./demo-log";
 

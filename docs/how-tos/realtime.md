@@ -7,7 +7,7 @@ Relay NATS subjects and JetStream streams over Server-Sent Events.
 ```ts
 // app/api/cursors/route.ts
 import { connection } from "next/server";
-import { sseFromSubject } from "next-nats/realtime";
+import { sseFromSubject } from "@trogonstack/next-nats/realtime";
 
 export async function GET(request: Request) {
   await connection();
@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 ## From a stream, with replay
 
 ```ts
-import { sseFromStream } from "next-nats/realtime";
+import { sseFromStream } from "@trogonstack/next-nats/realtime";
 
 export async function GET(request: Request) {
   await connection();
@@ -33,7 +33,7 @@ The consumer is ordered. A reconnecting browser sends `Last-Event-ID`, and the s
 ## Publish
 
 ```ts
-import { corePublish, jsPublish } from "next-nats";
+import { corePublish, jsPublish } from "@trogonstack/next-nats";
 
 await corePublish("cursors.ada", { x: 1, y: 2 });
 await jsPublish("feed.post", { text: "hello" });
@@ -43,7 +43,7 @@ await jsPublish("feed.post", { text: "hello" });
 
 ```tsx
 "use client";
-import { useNatsEvents } from "next-nats/realtime/client";
+import { useNatsEvents } from "@trogonstack/next-nats/realtime/client";
 
 const { events, status } = useNatsEvents<{ text: string }>({ url: "/api/realtime/feed" });
 ```

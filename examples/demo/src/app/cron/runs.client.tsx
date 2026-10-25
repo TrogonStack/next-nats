@@ -1,7 +1,7 @@
 "use client";
 
 import { Live } from "@/components/live.client";
-import type { CronRun } from "next-nats/cron";
+import type { CronRun } from "@trogonstack/next-nats/cron";
 
 export function CronRuns() {
   return (

@@ -1,7 +1,7 @@
 "use server";
 import "server-only";
 
-import { ServiceCallError } from "next-nats/services";
+import { ServiceCallError } from "@trogonstack/next-nats/services";
 import { calc, prober } from "@/services/nats/service-clients";
 
 export type CalcState = { ok: boolean; message: string };

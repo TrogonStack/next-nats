@@ -7,7 +7,7 @@ Replace `@vercel/blob` with a NATS Object Store bucket.
 ```ts
 // app/blob/[...path]/route.ts
 import { connection } from "next/server";
-import { createBlobRoute } from "next-nats/blob";
+import { createBlobRoute } from "@trogonstack/next-nats/blob";
 
 const route = createBlobRoute();
 
@@ -30,7 +30,7 @@ The route serves byte ranges and conditional requests. Pass `authorize` to `crea
 ## Upload and read on the server
 
 ```ts
-import { put, get, del } from "next-nats/blob";
+import { put, get, del } from "@trogonstack/next-nats/blob";
 
 const { pathname } = await put("avatars/ada.png", file, { access: "public" });
 const blob = await get(pathname);
@@ -40,7 +40,7 @@ await del(pathname);
 ## Hand the browser a signed URL
 
 ```ts
-import { createUploadUrl, createSignedUrl } from "next-nats/blob";
+import { createUploadUrl, createSignedUrl } from "@trogonstack/next-nats/blob";
 
 const upload = createUploadUrl("avatars/ada.png");
 const download = createSignedUrl("avatars/ada.png");

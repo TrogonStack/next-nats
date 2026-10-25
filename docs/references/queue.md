@@ -1,6 +1,6 @@
 # Queue
 
-Exports of `next-nats/queue`.
+Exports of `@trogonstack/next-nats/queue`.
 
 ## Functions
 

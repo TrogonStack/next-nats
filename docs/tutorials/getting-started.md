@@ -22,7 +22,7 @@ mise run install
 mise run build
 ```
 
-The demo imports `next-nats` from the workspace, so the library is built first.
+The demo imports `@trogonstack/next-nats` from the workspace, so the library is built first.
 
 ## Run the demo
 
@@ -44,7 +44,7 @@ The task starts two `next start` processes against the same NATS server, reads a
 
 ```ts
 // next.config.ts
-import { withNats } from "next-nats/next";
+import { withNats } from "@trogonstack/next-nats/next";
 
 export default withNats({ cacheComponents: true }, { cache: true });
 ```
@@ -53,7 +53,7 @@ export default withNats({ cacheComponents: true }, { cache: true });
 // instrumentation.ts
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    const { registerNats } = await import("next-nats/instrumentation");
+    const { registerNats } = await import("@trogonstack/next-nats/instrumentation");
     await registerNats({ setup: () => import("./services/nats/consumers") });
   }
 }

@@ -1,6 +1,6 @@
 # Services
 
-Exports of `next-nats/services`, built on NATS micro.
+Exports of `@trogonstack/next-nats/services`, built on NATS micro.
 
 ## Defining
 

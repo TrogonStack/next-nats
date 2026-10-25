@@ -1,6 +1,6 @@
 # Rate limit
 
-Exports of `next-nats/ratelimit`, shaped like `@upstash/ratelimit`.
+Exports of `@trogonstack/next-nats/ratelimit`, shaped like `@upstash/ratelimit`.
 
 ## Ratelimit
 

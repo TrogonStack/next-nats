@@ -1,7 +1,7 @@
 "use server";
 import "server-only";
 
-import { jsPublish } from "next-nats";
+import { jsPublish } from "@trogonstack/next-nats";
 import { DEMO_SUBJECT } from "@/constants/demo";
 
 export type PublishState = { ok: boolean; message: string };

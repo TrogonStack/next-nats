@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
-import { list } from "next-nats/blob";
+import { list } from "@trogonstack/next-nats/blob";
 import { features } from "@/constants/features";
 import { deleteBlob } from "./_server/actions/blob";
 import { Uploader } from "./uploader.client";

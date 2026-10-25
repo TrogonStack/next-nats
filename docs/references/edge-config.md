@@ -1,6 +1,6 @@
 # Edge Config
 
-Exports of `next-nats/edge-config`.
+Exports of `@trogonstack/next-nats/edge-config`.
 
 | Export | Description |
 | --- | --- |

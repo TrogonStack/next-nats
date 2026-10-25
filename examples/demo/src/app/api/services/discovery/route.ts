@@ -1,5 +1,5 @@
 import { connection } from "next/server";
-import { discover } from "next-nats/services";
+import { discover } from "@trogonstack/next-nats/services";
 
 export async function GET() {
   await connection();

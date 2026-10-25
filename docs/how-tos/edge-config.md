@@ -3,7 +3,7 @@
 Replace `@vercel/edge-config` with a KV bucket mirrored into process memory.
 
 ```ts
-import { get, getAll, has, digest } from "next-nats/edge-config";
+import { get, getAll, has, digest } from "@trogonstack/next-nats/edge-config";
 
 const flag = await get<boolean>("new-checkout");
 const all = await getAll();
@@ -22,7 +22,7 @@ await get("new-checkout", { consistentRead: true });
 ## Write items
 
 ```ts
-import { setEdgeConfigItems } from "next-nats/edge-config";
+import { setEdgeConfigItems } from "@trogonstack/next-nats/edge-config";
 
 await setEdgeConfigItems([
   { operation: "upsert", key: "new-checkout", value: true },

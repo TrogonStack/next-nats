@@ -1,4 +1,4 @@
-import { ensureStream } from "next-nats";
+import { ensureStream } from "@trogonstack/next-nats";
 
 export const FEED_STREAM = "DEMO_FEED";
 export const FEED_SUBJECT = "demo.feed";

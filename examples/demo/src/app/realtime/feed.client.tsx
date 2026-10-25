@@ -1,6 +1,6 @@
 "use client";
 
-import { useNatsEvents } from "next-nats/realtime/client";
+import { useNatsEvents } from "@trogonstack/next-nats/realtime/client";
 import { publishFeed } from "./_server/actions/realtime";
 
 interface FeedMessage {

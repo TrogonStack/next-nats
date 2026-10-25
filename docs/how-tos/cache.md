@@ -6,7 +6,7 @@ Share `'use cache'` entries, ISR pages and fetch cache entries across replicas.
 
 ```ts
 // next.config.ts
-import { withNats } from "next-nats/next";
+import { withNats } from "@trogonstack/next-nats/next";
 
 export default withNats({ cacheComponents: true }, { cache: true });
 ```

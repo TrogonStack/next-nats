@@ -1,6 +1,6 @@
 import { connection } from "next/server";
-import { corePublish } from "next-nats";
-import { sseFromSubject } from "next-nats/realtime";
+import { corePublish } from "@trogonstack/next-nats";
+import { sseFromSubject } from "@trogonstack/next-nats/realtime";
 import { CURSOR_SUBJECT } from "@/services/nats/feed";
 import { badRequest, readJson } from "@/services/nats/http-errors";
 

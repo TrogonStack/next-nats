@@ -1,5 +1,5 @@
 {
-  "name": "next-nats",
+  "name": "@trogonstack/next-nats",
   "version": "0.0.0",
   "type": "module",
   "license": "Apache-2.0",

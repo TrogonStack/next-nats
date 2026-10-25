@@ -1,6 +1,6 @@
 # Cron
 
-Exports of `next-nats/cron`.
+Exports of `@trogonstack/next-nats/cron`.
 
 | Export | Description |
 | --- | --- |

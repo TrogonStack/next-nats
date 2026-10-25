@@ -1,4 +1,4 @@
-import { defineService, endpoint, EndpointError } from "next-nats/services";
+import { defineService, endpoint, EndpointError } from "@trogonstack/next-nats/services";
 
 interface Operands {
   a: number;

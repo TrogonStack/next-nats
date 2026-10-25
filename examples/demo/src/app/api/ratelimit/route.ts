@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { Ratelimit } from "next-nats/ratelimit";
+import { Ratelimit } from "@trogonstack/next-nats/ratelimit";
 import { rateLimited } from "@/services/nats/http-errors";
 
 const limiter = new Ratelimit({ limiter: Ratelimit.slidingWindow(5, "10 s"), prefix: "demo:route" });
