@@ -1,10 +1,13 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 import { closeNats, connectNats, getNats } from "../../src/connection.js";
-import { createKv, decodeKey, encodeKey, KvError } from "../../src/kv/index.js";
+import { Redis as UpstashRedis } from "@upstash/redis";
+import { decodeKey, encodeKey } from "../../src/kv/index.js";
+import { Redis, errors } from "../../src/redis/index.js";
+import { internals } from "../../src/redis/redis.js";
 
 const run = Math.random().toString(36).slice(2, 8);
 const BUCKET = `kvt_${run}`;
-const kv = createKv({ bucket: BUCKET });
+const kv = new Redis({ bucket: BUCKET });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 beforeAll(async () => {
@@ -83,7 +86,7 @@ describe("counters", () => {
     await kv.set("c:s", "41");
     expect(await kv.incr("c:s")).toBe(42);
     await kv.set("c:bad", "abc");
-    await expect(kv.incr("c:bad")).rejects.toBeInstanceOf(KvError);
+    await expect(kv.incr("c:bad")).rejects.toBeInstanceOf(errors.UpstashError);
   });
 
   it("concurrent incr is exact under CAS contention", async () => {
@@ -129,10 +132,10 @@ describe("ttl", () => {
   });
 
   it("is removed by the server natively", async () => {
-    expect(await kv.store.nativeTtl).toBe(true);
+    expect(await kv[internals].store.nativeTtl).toBe(true);
     await kv.set("t:native", "v", { ex: 1 });
     await sleep(2500);
-    const bucket = await kv.store.kv();
+    const bucket = await kv[internals].store.kv();
     const entry = await bucket.get(encodeKey("t:native"));
     expect(entry === null || entry.operation !== "PUT").toBe(true);
   });
@@ -201,5 +204,91 @@ describe("hashes", () => {
   it("flushdb empties the bucket", async () => {
     await kv.flushdb();
     expect(await kv.dbsize()).toBe(0);
+  });
+});
+
+describe("type parity with @upstash/redis", () => {
+  type Ours = Redis;
+  type Theirs = UpstashRedis;
+  const methods = [
+    "get", "set", "setnx", "setex", "psetex", "getset", "getdel", "getex", "mget", "mset", "msetnx",
+    "append", "strlen", "getrange", "setrange", "incr", "incrby", "incrbyfloat", "decr", "decrby",
+    "del", "unlink", "exists", "touch", "expire", "pexpire", "expireat", "pexpireat", "persist",
+    "ttl", "pttl", "type", "rename", "renamenx", "copy", "keys", "scan", "randomkey", "dbsize",
+    "flushdb", "flushall", "ping", "echo", "time",
+    "hset", "hmset", "hsetnx", "hget", "hgetall", "hmget", "hdel", "hincrby", "hincrbyfloat",
+    "hexists", "hkeys", "hvals", "hlen", "hstrlen", "hrandfield", "hscan",
+    "lpush", "rpush", "lpushx", "rpushx", "lpop", "rpop", "llen", "lindex", "lrange", "lset", "lrem",
+    "ltrim", "linsert", "lmove", "lpos",
+    "sadd", "srem", "sismember", "smismember", "smembers", "scard", "spop", "srandmember", "smove",
+    "sdiff", "sdiffstore", "sinter", "sinterstore", "sunion", "sunionstore", "sintercard", "sscan",
+    "zadd", "zcard", "zcount", "zlexcount", "zincrby", "zscore", "zmscore", "zrank", "zrevrank", "zrem",
+    "zrange", "zpopmin", "zpopmax", "zremrangebyrank", "zremrangebyscore", "zremrangebylex", "zunion",
+    "zunionstore", "zinterstore", "zdiffstore", "zscan", "pipeline", "multi",
+  ] as const satisfies readonly (keyof Ours & keyof Theirs)[];
+
+  it("exposes every implemented method as a function", () => {
+    for (const m of methods) expect(typeof kv[m]).toBe("function");
+  });
+
+  it("keeps common return shapes", () => {
+    expectTypeOf<Awaited<ReturnType<Ours["get"]>>>().toEqualTypeOf<Awaited<ReturnType<Theirs["get"]>>>();
+    expectTypeOf<Awaited<ReturnType<Ours["incr"]>>>().toEqualTypeOf<number>();
+    expectTypeOf<Awaited<ReturnType<Ours["hgetall"]>>>().toEqualTypeOf<Awaited<ReturnType<Theirs["hgetall"]>>>();
+    expectTypeOf<Awaited<ReturnType<Ours["ttl"]>>>().toEqualTypeOf<number>();
+    expectTypeOf<Awaited<ReturnType<Ours["smembers"]>>>().toEqualTypeOf<Awaited<ReturnType<Theirs["smembers"]>>>();
+    expectTypeOf<Awaited<ReturnType<Ours["scan"]>>>().toEqualTypeOf<Awaited<ReturnType<Theirs["scan"]>>>();
+  });
+
+  it("accepts the same set options", () => {
+    expectTypeOf<Parameters<Ours["set"]>[2]>().toEqualTypeOf<Parameters<Theirs["set"]>[2]>();
+  });
+});
+
+describe("collections", () => {
+  it("lists", async () => {
+    expect(await kv.rpush("l:a", "x", "y", "z")).toBe(3);
+    expect(await kv.lpush("l:a", "w")).toBe(4);
+    expect(await kv.lrange("l:a", 0, -1)).toEqual(["w", "x", "y", "z"]);
+    expect(await kv.lpop("l:a")).toBe("w");
+    expect(await kv.rpop("l:a")).toBe("z");
+    expect(await kv.llen("l:a")).toBe(2);
+    expect(await kv.lindex("l:a", 1)).toBe("y");
+  });
+
+  it("sets", async () => {
+    expect(await kv.sadd("st:a", "1", "2", "3")).toBe(3);
+    expect(await kv.sadd("st:b", "2", "3", "4")).toBe(3);
+    expect((await kv.sinter("st:a", "st:b")).sort()).toEqual([2, 3]);
+    expect((await kv.sunion("st:a", "st:b")).sort()).toEqual([1, 2, 3, 4]);
+    expect(await kv.sdiff("st:a", "st:b")).toEqual([1]);
+    expect(await kv.sismember("st:a", "1")).toBe(1);
+    expect(await kv.scard("st:a")).toBe(3);
+  });
+
+  it("sorted sets", async () => {
+    expect(await kv.zadd("z:a", { score: 1, member: "a" }, { score: 3, member: "c" }, { score: 2, member: "b" })).toBe(3);
+    expect(await kv.zrange("z:a", 0, -1)).toEqual(["a", "b", "c"]);
+    expect(await kv.zrange("z:a", 0, -1, { rev: true })).toEqual(["c", "b", "a"]);
+    expect(await kv.zrange("z:a", 0, 1, { withScores: true })).toEqual(["a", 1, "b", 2]);
+    expect(await kv.zscore("z:a", "b")).toBe(2);
+    expect(await kv.zrank("z:a", "c")).toBe(2);
+    expect(await kv.zincrby("z:a", 5, "a")).toBe(6);
+    expect(await kv.zpopmin("z:a", 1)).toEqual(["b", 2]);
+  });
+});
+
+describe("pipeline and multi", () => {
+  it("runs queued commands in order and returns results", async () => {
+    const res = await kv.pipeline().set("p:a", 1).incr("p:a").get("p:a").exec();
+    expect(res).toEqual(["OK", 2, 2]);
+    const tx = await kv.multi().hset("p:h", { f: "v" }).hget("p:h", "f").exec();
+    expect(tx).toEqual([1, "v"]);
+  });
+});
+
+describe("unsupported", () => {
+  it("scripting throws a clear error", async () => {
+    await expect(kv.eval("return 1", [], [])).rejects.toBeInstanceOf(errors.UnsupportedCommandError);
   });
 });

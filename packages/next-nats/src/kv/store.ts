@@ -5,7 +5,7 @@ import { getJs, openKv } from "../connection.js";
 import { Code, SpecError } from "../errors.js";
 import { decodeKey, encodeKey } from "./key.js";
 
-export type RecordKind = "s" | "h";
+export type RecordKind = "s" | "h" | "l" | "S" | "z";
 
 export interface KvRecord {
   t: RecordKind;
@@ -45,6 +45,13 @@ export class KvError extends SpecError {
       legacyMessage: `${code} ${message}`,
     });
     this.name = "KvError";
+  }
+}
+
+export class UpstashError extends KvError {
+  constructor(code: string, message: string, spec: { code?: Code; reason?: string } = {}) {
+    super(code, message, spec);
+    this.name = "UpstashError";
   }
 }
 
@@ -156,7 +163,7 @@ export class KvStore {
       if (ok) return result;
       if (attempt > 2) await new Promise((r) => setTimeout(r, Math.random() * Math.min(5 * attempt, 50)));
     }
-    throw new KvError("ERR", `contention on key "${key}" exceeded ${this.maxRetries} retries`, { code: Code.ABORTED, reason: "CONTENTION" });
+    throw new UpstashError("ERR", `contention on key "${key}" exceeded ${this.maxRetries} retries`, { code: Code.ABORTED, reason: "CONTENTION" });
   }
 
   async allKeys(): Promise<string[]> {

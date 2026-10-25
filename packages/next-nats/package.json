@@ -20,6 +20,10 @@
       "types": "./dist/instrumentation.d.ts",
       "default": "./dist/instrumentation.js"
     },
+    "./redis": {
+      "types": "./dist/redis/index.d.ts",
+      "default": "./dist/redis/index.js"
+    },
     "./kv": {
       "types": "./dist/kv/index.d.ts",
       "default": "./dist/kv/index.js"
@@ -108,9 +112,10 @@
   "devDependencies": {
     "@types/react": "^19.3.0",
     "@upstash/ratelimit": "^2.2.0",
+    "@upstash/redis": "1.39.0",
+    "@vercel/blob": "^2.8.2",
     "@vercel/edge-config": "^1.5.1",
     "@vercel/kv": "^3.0.0",
-    "@vercel/blob": "^2.8.2",
     "@vercel/queue": "^0.10.0",
     "next": "16.4.3",
     "react": "^19.0.0",

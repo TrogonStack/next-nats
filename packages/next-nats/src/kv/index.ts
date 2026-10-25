@@ -1,11 +1,48 @@
 import "server-only";
-import { createKv, NatsKv } from "./client.js";
+import { Redis } from "../redis/redis.js";
+import type { RedisConfigNodejs, ScanCommandOptions } from "../redis/types.js";
 
-export { createKv, NatsKv } from "./client.js";
-export type { ExpireOption, KvValue, ScanOptions, SetOptions } from "./client.js";
-export { KvError, KvStore } from "./store.js";
-export type { KvRecord, KvStoreOptions } from "./store.js";
 export { decodeKey, encodeKey, globToRegExp } from "./key.js";
 export type { KvKey } from "./key.js";
+export { KvError, KvStore, UpstashError } from "./store.js";
+export type { KvRecord, KvStoreOptions } from "./store.js";
 
-export const kv: NatsKv = createKv({ bucket: process.env.NEXT_NATS_KV_BUCKET ?? "kv" });
+async function* iterate<T>(
+  page: (cursor: string) => Promise<[string, T[]]>,
+): AsyncGenerator<T, void, undefined> {
+  let cursor = "0";
+  do {
+    const [next, items] = await page(cursor);
+    yield* items;
+    cursor = next;
+  } while (cursor !== "0");
+}
+
+export class VercelKV extends Redis {
+  scanIterator(options?: ScanCommandOptions): AsyncIterable<string> {
+    return iterate<string>(async (cursor) => {
+      const [next, keys] = await this.scan(cursor, options ?? {});
+      return [next, keys as string[]];
+    });
+  }
+
+  hscanIterator(key: string, options?: ScanCommandOptions): AsyncIterable<string | number> {
+    return iterate((cursor) => this.hscan(key, cursor, options));
+  }
+
+  sscanIterator(key: string, options?: ScanCommandOptions): AsyncIterable<string | number> {
+    return iterate((cursor) => this.sscan(key, cursor, options));
+  }
+
+  zscanIterator(key: string, options?: ScanCommandOptions): AsyncIterable<string | number> {
+    return iterate((cursor) => this.zscan(key, cursor, options));
+  }
+}
+
+export function createClient(config: RedisConfigNodejs): VercelKV {
+  return new VercelKV({ ...config });
+}
+
+export const kv: VercelKV = createClient({});
+
+export default kv;
