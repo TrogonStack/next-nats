@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Run the blob differential suite: @vercel/blob against a local fake, ours against NATS"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.config/mise/lib/nats.sh"
+exec pnpm exec vitest run packages/next-nats/tests/vitest/differential/blob "$@"
