@@ -1,5 +1,5 @@
 import { invalidArgument } from "../errors.js";
-import type { KvRecord, KvStore } from "../kv/store.js";
+import type { KvRecord, Store } from "../kv/store.js";
 import { internals } from "../redis/redis.js";
 import type { Redis } from "../redis/redis.js";
 
@@ -105,20 +105,16 @@ export function dynamicLimitKey(prefix: string): string {
   return `${prefix}:dynamic:limit`;
 }
 
-function storeOf(ctx: RegionContext): KvStore {
+function storeOf(ctx: RegionContext): Store {
   return ctx.redis[internals].store;
-}
-
-function keyOf(ctx: RegionContext, identifier: string): string {
-  return `${ctx.prefix}:${identifier}`;
 }
 
 function parseState<T>(rec: KvRecord | null): T | undefined {
   return rec && typeof rec.v === "string" ? (JSON.parse(rec.v) as T) : undefined;
 }
 
-function record(state: unknown, x: number): KvRecord {
-  return { t: "s", v: JSON.stringify(state), x };
+function record(state: unknown, x?: number): KvRecord {
+  return { t: "s", v: JSON.stringify(state), ...(x !== undefined && { x }) };
 }
 
 async function tokensFor(ctx: RegionContext, configured: number): Promise<number> {
@@ -128,21 +124,17 @@ async function tokensFor(ctx: RegionContext, configured: number): Promise<number
   return Number.isFinite(dynamic) ? dynamic : configured;
 }
 
-type Outcome = Omit<RatelimitResponse, "pending">;
+function cachedBlock(ctx: RegionContext, identifier: string, rate: number, limit: number): RatelimitResponse | undefined {
+  if (!ctx.cache || rate <= 0) return undefined;
+  const { blocked, reset } = ctx.cache.isBlocked(identifier);
+  if (!blocked) return undefined;
+  return { success: false, limit, remaining: 0, reset, pending: Promise.resolve(), reason: "cacheBlock" };
+}
 
-async function guarded(
-  ctx: RegionContext,
-  identifier: string,
-  tokens: number,
-  compute: () => Promise<Outcome>,
-): Promise<RatelimitResponse> {
-  if (ctx.cache) {
-    const { blocked, reset } = ctx.cache.isBlocked(identifier);
-    if (blocked) return { success: false, limit: tokens, remaining: 0, reset, pending: Promise.resolve(), reason: "cacheBlock" };
-  }
-  const outcome = await compute();
-  if (!outcome.success && ctx.cache) ctx.cache.blockUntil(identifier, outcome.reset);
-  return { ...outcome, pending: Promise.resolve() };
+function remember(ctx: RegionContext, identifier: string, success: boolean, rate: number, reset: number): void {
+  if (!ctx.cache) return;
+  if (!success) ctx.cache.blockUntil(identifier, reset);
+  else if (rate < 0) ctx.cache.pop(identifier);
 }
 
 interface Windows {
@@ -158,43 +150,51 @@ function roll(state: Windows | undefined, idx: number): Windows {
   return { w: idx, cur: 0, prev: 0 };
 }
 
-function fixedOp(store: KvStore, key: string, tokens: number, size: number, rate: number, now: number): Promise<Outcome> {
+function weightedPrev(state: Windows, now: number, size: number, idx: number): number {
+  return Math.floor((1 - (now - idx * size) / size) * state.prev);
+}
+
+async function incrementWindow(store: Store, key: string, size: number, rate: number, now: number): Promise<number> {
   const idx = Math.floor(now / size);
-  const reset = (idx + 1) * size;
   return store.mutate(key, (cur) => {
     const state = roll(parseState<Windows>(cur), idx);
-    const success = state.cur + rate <= tokens;
-    const next = success ? { ...state, cur: state.cur + rate } : state;
-    return {
-      next: success ? record(next, reset + size) : undefined,
-      result: { success, limit: tokens, remaining: Math.max(0, tokens - next.cur), reset },
-    };
+    const next = { ...state, cur: state.cur + rate };
+    return { next: record(next, (idx + 1) * size), result: next.cur };
   });
 }
 
-function windowPeek(ctx: RegionContext, identifier: string, tokens: number, size: number, weighted: boolean) {
-  return async () => {
-    const now = Date.now();
-    const idx = Math.floor(now / size);
-    const state = roll(parseState<Windows>((await storeOf(ctx).read(keyOf(ctx, identifier))).rec), idx);
-    const used = weighted ? Math.floor(state.prev * (1 - (now - idx * size) / size)) + state.cur : state.cur;
-    return { limit: tokens, remaining: Math.max(0, tokens - used), reset: (idx + 1) * size };
-  };
+async function readWindow(ctx: RegionContext, key: string, size: number, now: number): Promise<Windows> {
+  return roll(parseState<Windows>((await storeOf(ctx).read(key)).rec), Math.floor(now / size));
 }
 
 async function drop(ctx: RegionContext, identifier: string): Promise<void> {
-  await storeOf(ctx).mutate(keyOf(ctx, identifier), (cur) => ({ next: cur ? null : undefined, result: undefined }));
+  await storeOf(ctx).mutate(identifier, (cur) => ({ next: cur ? null : undefined, result: undefined }));
 }
 
 export function fixedWindow(tokens: number, window: Duration): Algorithm<RegionContext> {
   const size = toMs(window);
   return () => ({
     limit: async (ctx, identifier, rate = 1) => {
-      const limit = await tokensFor(ctx, tokens);
-      return guarded(ctx, identifier, limit, () => fixedOp(storeOf(ctx), keyOf(ctx, identifier), limit, size, rate, Date.now()));
+      const blocked = cachedBlock(ctx, identifier, rate, tokens);
+      if (blocked) return blocked;
+      const effective = await tokensFor(ctx, tokens);
+      const now = Date.now();
+      const used = await incrementWindow(storeOf(ctx), identifier, size, rate, now);
+      const success = used <= effective;
+      const reset = (Math.floor(now / size) + 1) * size;
+      remember(ctx, identifier, success, rate, reset);
+      return { success, limit: effective, remaining: Math.max(0, effective - used), reset, pending: Promise.resolve() };
     },
-    getRemaining: async (ctx, identifier) => windowPeek(ctx, identifier, await tokensFor(ctx, tokens), size, false)(),
-    resetTokens: (ctx, identifier) => drop(ctx, identifier),
+    getRemaining: async (ctx, identifier) => {
+      const effective = await tokensFor(ctx, tokens);
+      const now = Date.now();
+      const state = await readWindow(ctx, identifier, size, now);
+      return { remaining: Math.max(0, effective - state.cur), reset: (Math.floor(now / size) + 1) * size, limit: effective };
+    },
+    resetTokens: async (ctx, identifier) => {
+      ctx.cache?.pop(identifier);
+      await drop(ctx, identifier);
+    },
   });
 }
 
@@ -202,24 +202,38 @@ export function slidingWindow(tokens: number, window: Duration): Algorithm<Regio
   const size = toMs(window);
   return () => ({
     limit: async (ctx, identifier, rate = 1) => {
-      const limit = await tokensFor(ctx, tokens);
-      return guarded(ctx, identifier, limit, () => {
-        const now = Date.now();
-        const idx = Math.floor(now / size);
-        const reset = (idx + 1) * size;
-        return storeOf(ctx).mutate(keyOf(ctx, identifier), (cur) => {
-          const state = roll(parseState<Windows>(cur), idx);
-          const weighted = Math.floor(state.prev * (1 - (now - idx * size) / size)) + state.cur;
-          const success = weighted + rate <= limit;
-          return {
-            next: success ? record({ ...state, cur: state.cur + rate }, reset + size) : undefined,
-            result: { success, limit, remaining: Math.max(0, limit - weighted - (success ? rate : 0)), reset },
-          };
-        });
+      const blocked = cachedBlock(ctx, identifier, rate, tokens);
+      if (blocked) return blocked;
+      const effective = await tokensFor(ctx, tokens);
+      const now = Date.now();
+      const idx = Math.floor(now / size);
+      const reset = (idx + 1) * size;
+      const remaining = await storeOf(ctx).mutate(identifier, (cur) => {
+        const state = roll(parseState<Windows>(cur), idx);
+        const prev = weightedPrev(state, now, size, idx);
+        if (rate > 0 && prev + state.cur >= effective) return { next: undefined, result: -1 };
+        const cursor = state.cur + rate;
+        return {
+          next: record({ ...state, cur: cursor }, (idx + 2) * size + 1000),
+          result: effective - (cursor + prev),
+        };
       });
+      const success = remaining >= 0;
+      remember(ctx, identifier, success, rate, reset);
+      return { success, limit: effective, remaining: Math.max(0, remaining), reset, pending: Promise.resolve() };
     },
-    getRemaining: async (ctx, identifier) => windowPeek(ctx, identifier, await tokensFor(ctx, tokens), size, true)(),
-    resetTokens: (ctx, identifier) => drop(ctx, identifier),
+    getRemaining: async (ctx, identifier) => {
+      const effective = await tokensFor(ctx, tokens);
+      const now = Date.now();
+      const idx = Math.floor(now / size);
+      const state = await readWindow(ctx, identifier, size, now);
+      const used = weightedPrev(state, now, size, idx) + state.cur;
+      return { remaining: Math.max(0, effective - used), reset: (idx + 1) * size, limit: effective };
+    },
+    resetTokens: async (ctx, identifier) => {
+      ctx.cache?.pop(identifier);
+      await drop(ctx, identifier);
+    },
   });
 }
 
@@ -230,65 +244,82 @@ interface Bucket {
 
 export function tokenBucket(refillRate: number, interval: Duration, maxTokens: number): Algorithm<RegionContext> {
   const size = toMs(interval);
-  const ttlMs = Math.ceil(maxTokens / refillRate) * size + size;
-  const refill = (state: Bucket | undefined, max: number, now: number): Bucket => {
-    if (!state) return { tokens: max, at: now };
-    const intervals = Math.floor((now - state.at) / size);
-    if (intervals <= 0) return state;
-    const refilled = Math.min(max, state.tokens + intervals * refillRate);
-    return { tokens: refilled, at: refilled === max ? now : state.at + intervals * size };
-  };
   return () => ({
     limit: async (ctx, identifier, rate = 1) => {
-      const max = await tokensFor(ctx, maxTokens);
-      return guarded(ctx, identifier, max, () => {
-        const now = Date.now();
-        return storeOf(ctx).mutate(keyOf(ctx, identifier), (cur) => {
-          const state = refill(parseState<Bucket>(cur), max, now);
-          const success = state.tokens >= rate;
-          const next = success ? { ...state, tokens: state.tokens - rate } : state;
-          return {
-            next: record(next, now + ttlMs),
-            result: { success, limit: max, remaining: next.tokens, reset: next.at + size },
-          };
-        });
+      const blocked = cachedBlock(ctx, identifier, rate, maxTokens);
+      if (blocked) return blocked;
+      const effective = await tokensFor(ctx, maxTokens);
+      const now = Date.now();
+      const outcome = await storeOf(ctx).mutate(identifier, (cur) => {
+        const found = parseState<Bucket>(cur);
+        let at = found ? found.at : now;
+        let available = found ? found.tokens : effective;
+        if (now >= at + size) {
+          const refills = Math.floor((now - at) / size);
+          available = Math.min(effective, available + refills * refillRate);
+          at += refills * size;
+        }
+        if (rate > 0 && available < rate) return { next: undefined, result: { remaining: -1, reset: at + size } };
+        const remaining = available - rate;
+        const ttl = Math.ceil((effective - remaining) / refillRate) * size;
+        return {
+          next: record({ tokens: remaining, at }, ttl > 0 ? now + ttl : undefined),
+          result: { remaining, reset: at + size },
+        };
       });
+      const success = outcome.remaining >= 0;
+      remember(ctx, identifier, success, rate, outcome.reset);
+      return { success, limit: effective, remaining: Math.max(0, outcome.remaining), reset: outcome.reset, pending: Promise.resolve() };
     },
     getRemaining: async (ctx, identifier) => {
-      const max = await tokensFor(ctx, maxTokens);
-      const state = refill(parseState<Bucket>((await storeOf(ctx).read(keyOf(ctx, identifier))).rec), max, Date.now());
-      return { limit: max, remaining: state.tokens, reset: state.at + size };
+      const effective = await tokensFor(ctx, maxTokens);
+      const found = parseState<Bucket>((await storeOf(ctx).read(identifier)).rec);
+      if (!found) return { remaining: effective, reset: Date.now() + size, limit: effective };
+      return { remaining: Math.max(0, found.tokens), reset: found.at + size, limit: effective };
     },
-    resetTokens: (ctx, identifier) => drop(ctx, identifier),
+    resetTokens: async (ctx, identifier) => {
+      ctx.cache?.pop(identifier);
+      await drop(ctx, identifier);
+    },
   });
 }
 
 export function cachedFixedWindow(tokens: number, window: Duration): Algorithm<RegionContext> {
   const size = toMs(window);
+  const bucketKey = (identifier: string, now: number) => `${identifier}:${Math.floor(now / size)}`;
   return () => ({
     limit: async (ctx, identifier, rate = 1) => {
       const cache = ctx.cache;
       if (!cache) throw new Error("This algorithm requires a cache");
-      const limit = await tokensFor(ctx, tokens);
-      const now = Date.now();
-      const bucket = Math.floor(now / size);
-      const reset = (bucket + 1) * size;
-      const counter = `${identifier}:${bucket}`;
-      const key = keyOf(ctx, identifier);
-      const cached = cache.get(counter);
-      if (cached !== null) {
-        if (cached + rate > limit) return { success: false, limit, remaining: 0, reset, pending: Promise.resolve() };
-        cache.incr(counter, rate);
-        const pending = fixedOp(storeOf(ctx), key, limit, size, rate, now);
-        return { success: true, limit, remaining: limit - cached - rate, reset, pending };
+      if (ctx.dynamicLimits) {
+        console.warn("Warning: Dynamic limits are not yet supported for cachedFixedWindow algorithm. The dynamicLimits option will be ignored.");
       }
-      const outcome = await fixedOp(storeOf(ctx), key, limit, size, rate, now);
-      cache.set(counter, limit - outcome.remaining);
-      return { ...outcome, pending: Promise.resolve() };
+      const now = Date.now();
+      const key = bucketKey(identifier, now);
+      const reset = (Math.floor(now / size) + 1) * size;
+      if (typeof cache.get(key) === "number") {
+        const afterUpdate = cache.incr(key, rate);
+        const success = afterUpdate <= tokens;
+        const pending = success ? incrementWindow(storeOf(ctx), identifier, size, rate, now) : Promise.resolve();
+        return { success, limit: tokens, remaining: tokens - afterUpdate, reset, pending };
+      }
+      const used = await incrementWindow(storeOf(ctx), identifier, size, rate, now);
+      cache.set(key, used);
+      const remaining = tokens - used;
+      return { success: remaining >= 0, limit: tokens, remaining, reset, pending: Promise.resolve() };
     },
-    getRemaining: async (ctx, identifier) => windowPeek(ctx, identifier, await tokensFor(ctx, tokens), size, false)(),
+    getRemaining: async (ctx, identifier) => {
+      const cache = ctx.cache;
+      if (!cache) throw new Error("This algorithm requires a cache");
+      const now = Date.now();
+      const reset = (Math.floor(now / size) + 1) * size;
+      const cached = cache.get(bucketKey(identifier, now));
+      const used = typeof cached === "number" ? cached : (await readWindow(ctx, identifier, size, now)).cur;
+      return { remaining: Math.max(0, tokens - used), reset, limit: tokens };
+    },
     resetTokens: async (ctx, identifier) => {
-      ctx.cache?.pop(`${identifier}:${Math.floor(Date.now() / size)}`);
+      if (!ctx.cache) throw new Error("This algorithm requires a cache");
+      ctx.cache.pop(bucketKey(identifier, Date.now()));
       await drop(ctx, identifier);
     },
   });

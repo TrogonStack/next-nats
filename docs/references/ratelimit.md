@@ -28,12 +28,15 @@ Exports of `@trogonstack/next-nats/ratelimit`, shaped like `@upstash/ratelimit` 
 
 `analytics: true` counts allowed and blocked requests per identifier. `Analytics.getUsage()` reads the totals. The time series methods throw `UnsupportedCommandError`.
 
+## Counting
+
+The algorithms count the way `@upstash/ratelimit` does. Fixed window and cached fixed window keep counting blocked requests, so `remaining` and `reset` match for the same request sequence. Sliding window and token bucket do not consume tokens for blocked requests. Cached fixed window can report a negative `remaining` once its local counter passes the limit. A negative `rate` refunds tokens.
+
 ## Storage
 
 State is one KV record per identifier, updated with compare-and-set so concurrent callers do not lose counts. Records expire after twice the window, or the time to refill a full bucket.
 
 ## Differences
 
-- Blocked requests do not consume tokens, so a client hammering a full window does not push its own recovery further out.
 - `MultiRegionRatelimit`, `enableProtection`, `IpDenyList` updates and the `Analytics` time series throw `UnsupportedCommandError`.
 - `enableTelemetry`, `cacheScripts` and `denyListThreshold` are accepted and ignored.

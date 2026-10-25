@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { closeNats, connectNats, getNats } from "../../src/connection.js";
 import { Ratelimit as UpstashRatelimit } from "@upstash/ratelimit";
 import { Redis } from "../../src/redis/index.js";
@@ -173,5 +173,84 @@ describe("options", () => {
     await res2.pending;
     const usage = await redis.hgetall("an:analytics:usage");
     expect(Object.keys(usage ?? {}).length).toBeGreaterThan(0);
+  });
+});
+
+describe("replayed sequences match @upstash/ratelimit counting", () => {
+  const base = Math.floor(Date.now() / 100_000) * 100_000 + 100_000;
+  const at = (offset: number) => vi.spyOn(Date, "now").mockReturnValue(base + offset);
+  afterEach(() => vi.restoreAllMocks());
+
+  const run = async (rl: Ratelimit, offset: number, id = "u", rate?: number) => {
+    at(offset);
+    const r = await rl.limit(id, rate === undefined ? undefined : { rate });
+    await r.pending;
+    return [r.success, r.remaining, r.reset] as const;
+  };
+
+  it("fixed window counts blocked requests and refunds", async () => {
+    const rl = new Ratelimit({ redis, limiter: Ratelimit.fixedWindow(3, "10 s"), prefix: "rp-fw", ephemeralCache: false });
+    const seq = [];
+    for (let i = 0; i < 5; i++) seq.push(await run(rl, 1000));
+    expect(seq).toEqual([
+      [true, 2, base + 10_000],
+      [true, 1, base + 10_000],
+      [true, 0, base + 10_000],
+      [false, 0, base + 10_000],
+      [false, 0, base + 10_000],
+    ]);
+    expect(await run(rl, 1000, "u", -2)).toEqual([true, 0, base + 10_000]);
+    expect(await run(rl, 1000)).toEqual([false, 0, base + 10_000]);
+    at(1000);
+    expect((await rl.getRemaining("u")).remaining).toBe(0);
+    expect(await run(rl, 10_500)).toEqual([true, 2, base + 20_000]);
+  });
+
+  it("sliding window weights the previous window and does not count blocked requests", async () => {
+    const rl = new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(4, "10 s"), prefix: "rp-sw", ephemeralCache: false });
+    const first = [];
+    for (let i = 0; i < 5; i++) first.push(await run(rl, 1000));
+    expect(first).toEqual([
+      [true, 3, base + 10_000],
+      [true, 2, base + 10_000],
+      [true, 1, base + 10_000],
+      [true, 0, base + 10_000],
+      [false, 0, base + 10_000],
+    ]);
+    expect(await run(rl, 15_000)).toEqual([true, 1, base + 20_000]);
+    expect(await run(rl, 15_000)).toEqual([true, 0, base + 20_000]);
+    expect(await run(rl, 15_000)).toEqual([false, 0, base + 20_000]);
+    at(15_000);
+    expect((await rl.getRemaining("u")).remaining).toBe(0);
+  });
+
+  it("token bucket refills in whole intervals and rejects without consuming", async () => {
+    const rl = new Ratelimit({ redis, limiter: Ratelimit.tokenBucket(2, "10 s", 5), prefix: "rp-tb", ephemeralCache: false });
+    const seq = [];
+    for (let i = 0; i < 6; i++) seq.push(await run(rl, i === 5 ? 2000 : 1000));
+    expect(seq).toEqual([
+      [true, 4, base + 11_000],
+      [true, 3, base + 11_000],
+      [true, 2, base + 11_000],
+      [true, 1, base + 11_000],
+      [true, 0, base + 11_000],
+      [false, 0, base + 11_000],
+    ]);
+    expect(await run(rl, 11_005)).toEqual([true, 1, base + 21_000]);
+    at(11_005);
+    expect(await rl.getRemaining("u")).toEqual({ remaining: 1, reset: base + 21_000, limit: 5 });
+  });
+
+  it("cached fixed window reports negative remaining once the cache is exhausted", async () => {
+    const rl = new Ratelimit({ redis, limiter: Ratelimit.cachedFixedWindow(3, "10 s"), prefix: "rp-cf" });
+    const seq = [];
+    for (let i = 0; i < 5; i++) seq.push(await run(rl, 1000));
+    expect(seq).toEqual([
+      [true, 2, base + 10_000],
+      [true, 1, base + 10_000],
+      [true, 0, base + 10_000],
+      [false, -1, base + 10_000],
+      [false, -2, base + 10_000],
+    ]);
   });
 });

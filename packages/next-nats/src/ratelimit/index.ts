@@ -94,7 +94,7 @@ export class Ratelimit {
   limit = async (identifier: string, req?: LimitOptions): Promise<RatelimitResponse> => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const attempts: Promise<RatelimitResponse>[] = [this.limiter.limit(this.ctx, identifier, req?.rate, { cache: this.ctx.cache })];
+      const attempts: Promise<RatelimitResponse>[] = [this.limiter.limit(this.ctx, this.getKey(identifier), req?.rate, { cache: this.ctx.cache })];
       if (this.timeout > 0) {
         attempts.push(
           new Promise<RatelimitResponse>((resolve) => {
@@ -128,11 +128,11 @@ export class Ratelimit {
   };
 
   resetUsedTokens = async (identifier: string): Promise<void> => {
-    await this.limiter.resetTokens(this.ctx, identifier);
+    await this.limiter.resetTokens(this.ctx, this.getKey(identifier));
   };
 
   getRemaining = (identifier: string): Promise<{ remaining: number; reset: number; limit: number }> =>
-    this.limiter.getRemaining(this.ctx, identifier);
+    this.limiter.getRemaining(this.ctx, this.getKey(identifier));
 
   setDynamicLimit = async (options: { limit: number | false }): Promise<void> => {
     if (!this.dynamicLimits) {
@@ -149,6 +149,10 @@ export class Ratelimit {
     }
     return { dynamicLimit: await this.primaryRedis.get<number>(dynamicLimitKey(this.prefix)) };
   };
+
+  protected getKey(identifier: string): string {
+    return `${this.prefix}:${identifier}`;
+  }
 
   private submitAnalytics(response: RatelimitResponse, identifier: string, req?: LimitOptions): RatelimitResponse {
     if (!this.analytics || response.reason === "timeout") return response;
