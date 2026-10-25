@@ -34,10 +34,10 @@ PIDS+=($!)
 
 for port in $A $B; do
   for _ in $(seq 1 60); do
-    curl -fsS "http://127.0.0.1:$port/api/nats/health" >/dev/null 2>&1 && break
+    curl -fsS "http://127.0.0.1:$port/-/readiness" >/dev/null 2>&1 && break
     sleep 0.5
   done
-  curl -fsS "http://127.0.0.1:$port/api/nats/health" >/dev/null || fail "replica $port did not start"
+  curl -fsS "http://127.0.0.1:$port/-/readiness" >/dev/null || fail "replica $port did not start"
 done
 
 a1=$(grab $A /cache nonce)

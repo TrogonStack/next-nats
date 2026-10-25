@@ -68,6 +68,14 @@
       "types": "./dist/cron/index.d.ts",
       "default": "./dist/cron/index.js"
     },
+    "./health/readiness": {
+      "types": "./dist/health/readiness.d.ts",
+      "default": "./dist/health/readiness.js"
+    },
+    "./health/liveness": {
+      "types": "./dist/health/liveness.d.ts",
+      "default": "./dist/health/liveness.js"
+    },
     "./health": {
       "types": "./dist/health/index.d.ts",
       "default": "./dist/health/index.js"

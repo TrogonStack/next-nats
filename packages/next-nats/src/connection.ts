@@ -23,6 +23,15 @@ export interface Nats {
 
 export type NatsStatusEvent = { type: string; data?: unknown };
 export type NatsStatusListener = (event: NatsStatusEvent) => void;
+export type ConnectionPhase = "idle" | "connected" | "reconnecting" | "closed";
+
+export interface ConnectionState {
+  phase: ConnectionPhase;
+  since: number;
+  shuttingDown: boolean;
+  initializing: boolean;
+}
+
 export type ShutdownHook = () => void | Promise<void>;
 
 interface NatsStore {
@@ -33,14 +42,33 @@ interface NatsStore {
   shutdownHooks: Set<ShutdownHook>;
   signalsInstalled: boolean;
   closing?: Promise<void>;
+  phase: ConnectionPhase;
+  phaseSince: number;
+  shuttingDown: boolean;
+  initializing: number;
   kv: Map<string, Promise<import("@nats-io/kv").KV>>;
 }
 
 const STORE_KEY = Symbol.for("next-nats.store");
 
+function setPhase(s: NatsStore, phase: ConnectionPhase): void {
+  if (s.phase === phase) return;
+  s.phase = phase;
+  s.phaseSince = Date.now();
+}
+
 function store(): NatsStore {
   const g = globalThis as unknown as Record<symbol, NatsStore | undefined>;
-  return (g[STORE_KEY] ??= { listeners: new Set(), shutdownHooks: new Set(), signalsInstalled: false, kv: new Map() });
+  return (g[STORE_KEY] ??= {
+    listeners: new Set(),
+    shutdownHooks: new Set(),
+    signalsInstalled: false,
+    phase: "idle",
+    phaseSince: Date.now(),
+    shuttingDown: false,
+    initializing: 0,
+    kv: new Map(),
+  });
 }
 
 export function buildAuthenticator(auth: NatsAuth): Authenticator | undefined {
@@ -48,11 +76,11 @@ export function buildAuthenticator(auth: NatsAuth): Authenticator | undefined {
     case "none":
       return undefined;
     case "token":
-      return tokenAuthenticator(auth.token);
+      return tokenAuthenticator(auth.token.reveal());
     case "userpass":
-      return usernamePasswordAuthenticator(auth.user, auth.pass);
+      return usernamePasswordAuthenticator(auth.user, auth.pass.reveal());
     case "nkey":
-      return nkeyAuthenticator(new TextEncoder().encode(auth.seed));
+      return nkeyAuthenticator(new TextEncoder().encode(auth.seed.reveal()));
     case "creds": {
       const bytes = decodeCreds(auth.creds);
       return credsAuthenticator(bytes);
@@ -106,11 +134,14 @@ async function open(config: NatsConfig): Promise<Nats> {
   const s = store();
   const nats: Nats = { nc, js, jsm };
   s.current = nats;
+  s.shuttingDown = false;
+  setPhase(s, "connected");
   void watchStatus(nc);
   void nc.closed().then(() => {
     if (s.current?.nc === nc) {
       s.current = undefined;
       s.pending = undefined;
+      setPhase(s, "closed");
     }
   });
   installSignalHandlers();
@@ -119,6 +150,11 @@ async function open(config: NatsConfig): Promise<Nats> {
 
 async function watchStatus(nc: NatsConnection): Promise<void> {
   for await (const status of nc.status()) {
+    const s = store();
+    if (s.current?.nc === nc) {
+      if (status.type === "disconnect" || status.type === "reconnecting") setPhase(s, "reconnecting");
+      else if (status.type === "reconnect") setPhase(s, "connected");
+    }
     for (const listener of store().listeners) {
       try {
         listener({ type: status.type, data: "data" in status ? status.data : undefined });
@@ -147,6 +183,21 @@ export function connectNats(input?: NatsConfigInput): Promise<Nats> {
 
 export function getNats(): Promise<Nats> {
   return connectNats();
+}
+
+export function getConnectionState(): ConnectionState {
+  const s = store();
+  return { phase: s.phase, since: s.phaseSince, shuttingDown: s.shuttingDown, initializing: s.initializing > 0 };
+}
+
+export async function trackInitialization<T>(fn: () => Promise<T>): Promise<T> {
+  const s = store();
+  s.initializing += 1;
+  try {
+    return await fn();
+  } finally {
+    s.initializing -= 1;
+  }
 }
 
 export function peekNats(): Nats | undefined {
@@ -214,6 +265,7 @@ export function onNatsShutdown(hook: ShutdownHook): () => void {
 export function closeNats(): Promise<void> {
   const s = store();
   if (s.closing) return s.closing;
+  s.shuttingDown = true;
   const closing = (async () => {
     for (const hook of [...s.shutdownHooks]) {
       try {
@@ -230,6 +282,7 @@ export function closeNats(): Promise<void> {
     }
     s.current = undefined;
     s.pending = undefined;
+    setPhase(s, "closed");
     s.kv.clear();
   })().finally(() => {
     s.closing = undefined;

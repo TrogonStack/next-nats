@@ -9,7 +9,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body style={{ fontFamily: "system-ui, sans-serif", maxWidth: 720, margin: "2rem auto", padding: "0 1rem" }}>
         <header style={{ display: "flex", gap: "1rem", alignItems: "baseline", marginBottom: "2rem" }}>
           <Link href="/"><strong>next-nats</strong></Link>
-          <a href="/api/nats/health">health</a>
+          <a href="/-/readiness?verbose">readiness</a>
         </header>
         {children}
       </body>

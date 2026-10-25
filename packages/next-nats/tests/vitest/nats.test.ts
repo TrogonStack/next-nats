@@ -4,7 +4,7 @@ import { codec } from "../../src/codec.js";
 import { closeNats, connectNats, getNats, openKv } from "../../src/connection.js";
 import { defineConsumer, stopAllConsumers } from "../../src/consumer.js";
 import { ensureStream } from "../../src/streams.js";
-import { checkHealth } from "../../src/health/index.js";
+import { createReadinessHandler } from "../../src/health/index.js";
 import { corePublish, jsPublish, request } from "../../src/publish.js";
 
 const run = Math.random().toString(36).slice(2, 8);
@@ -32,10 +32,8 @@ afterAll(async () => {
 });
 
 describe("nats", () => {
-  it("is healthy", async () => {
-    const h = await checkHealth();
-    expect(h.status).toBe("connected");
-    expect(h.jetstream).toBeDefined();
+  it("is ready", async () => {
+    expect((await createReadinessHandler()()).status).toBe(200);
   });
 
   it("publishes with dedup", async () => {
