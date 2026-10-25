@@ -89,7 +89,7 @@ importers:
         specifier: ^3.0.0
         version: 3.0.0
       '@vercel/queue':
-        specifier: ^0.10.0
+        specifier: 0.10.0
         version: 0.10.0
       next:
         specifier: 16.4.3
