@@ -11,26 +11,51 @@ import { isConflict } from "../kv/store.js";
 export type EdgeConfigValue = string | number | boolean | null | { [x: string]: EdgeConfigValue } | EdgeConfigValue[];
 export type EdgeConfigItems = Record<string, EdgeConfigValue>;
 
+export interface EmbeddedEdgeConfig {
+  digest: string;
+  items: Record<string, EdgeConfigValue>;
+}
+
+export type Connection = {
+  baseUrl: string;
+  id: string;
+  token: string;
+  version: string;
+  type: "vercel";
+} | {
+  baseUrl: string;
+  id: string;
+  token: string;
+  version: string;
+  type: "external";
+};
+
 export interface EdgeConfigFunctionsOptions {
   consistentRead?: boolean;
 }
 
-export interface EdgeConfigClient {
-  readonly bucket: string;
-  get<T = EdgeConfigValue>(key: string, options?: EdgeConfigFunctionsOptions): Promise<T | undefined>;
-  getAll<T = EdgeConfigItems>(keys?: (keyof T)[], options?: EdgeConfigFunctionsOptions): Promise<T>;
-  has(key: string, options?: EdgeConfigFunctionsOptions): Promise<boolean>;
-  digest(options?: EdgeConfigFunctionsOptions): Promise<string>;
-  close(): Promise<void>;
+export interface EdgeConfigClientOptions {
+  staleIfError?: number | false;
+  disableDevelopmentCache?: boolean;
+  cache?: "no-store" | "force-cache";
 }
 
-export interface EdgeConfigClientOptions {
-  bucket?: string;
+export interface EdgeConfigClient {
+  connection: Connection;
+  get: <T = EdgeConfigValue>(key: string, options?: EdgeConfigFunctionsOptions) => Promise<T | undefined>;
+  getAll: <T = EdgeConfigItems>(keys?: (keyof T)[], options?: EdgeConfigFunctionsOptions) => Promise<T>;
+  has: (key: string, options?: EdgeConfigFunctionsOptions) => Promise<boolean>;
+  digest: (options?: EdgeConfigFunctionsOptions) => Promise<string>;
+  close: () => Promise<void>;
 }
 
 export type EdgeConfigItemOperation =
   | { operation: "create" | "update" | "upsert"; key: string; value: EdgeConfigValue }
   | { operation: "delete"; key: string };
+
+export interface UpdateEdgeConfigItemsOptions {
+  items: EdgeConfigItemOperation[];
+}
 
 export class EdgeConfigError extends SpecError {
   constructor(message: string, spec: { code?: Code; reason?: string } = {}) {
@@ -44,8 +69,6 @@ export class EdgeConfigError extends SpecError {
     this.name = "EdgeConfigError";
   }
 }
-
-const DEFAULT_BUCKET = "edge-config";
 
 class Mirror {
   private readonly items = new Map<string, EdgeConfigValue>();
@@ -165,23 +188,73 @@ function mirrorFor(bucket: string): Promise<Mirror> {
   return m;
 }
 
-export function createClient(options: EdgeConfigClientOptions = {}): EdgeConfigClient {
-  const bucket = options.bucket ?? process.env.NEXT_NATS_EDGE_CONFIG_BUCKET ?? DEFAULT_BUCKET;
+const DEFAULT_BUCKET = "edge-config";
+const SCHEME = "edge-config:";
+
+function defaultConnectionString(): string {
+  return process.env.EDGE_CONFIG ?? `${SCHEME}id=${process.env.NEXT_NATS_EDGE_CONFIG_BUCKET ?? DEFAULT_BUCKET}`;
+}
+
+export function parseConnectionString(connectionString: string): Connection | null {
+  try {
+    if (!connectionString.startsWith(SCHEME)) return null;
+    const params = new URLSearchParams(connectionString.slice(SCHEME.length));
+    const id = params.get("id");
+    if (!id) return null;
+    return {
+      type: "external",
+      baseUrl: `${SCHEME}${id}`,
+      id,
+      token: params.get("token") ?? "",
+      version: params.get("version") || "1",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function assertIsKey(key: unknown): asserts key is string {
+  if (typeof key !== "string") throw new Error("@vercel/edge-config: Expected key to be a string");
+}
+
+function assertIsKeys(keys: unknown): asserts keys is string[] {
+  if (!Array.isArray(keys) || keys.some((key) => typeof key !== "string")) {
+    throw new Error("@vercel/edge-config: Expected keys to be an array of string");
+  }
+}
+
+export function clone<T = EdgeConfigValue>(edgeConfigValue: T): T {
+  return JSON.parse(JSON.stringify(edgeConfigValue)) as T;
+}
+
+export function setTracerProvider(_tracer: unknown): void {}
+
+export function createClient(connectionString: string | undefined, _options: EdgeConfigClientOptions = {}): EdgeConfigClient {
+  if (!connectionString) throw new Error("@vercel/edge-config: No connection string provided");
+  const connection = parseConnectionString(connectionString);
+  if (!connection) throw new Error("@vercel/edge-config: Invalid connection string provided");
+  const bucket = connection.id;
   return {
-    bucket,
+    connection,
     async get<T = EdgeConfigValue>(key: string, opts?: EdgeConfigFunctionsOptions) {
+      assertIsKey(key);
+      if (key.trim() === "") return undefined;
       if (opts?.consistentRead) {
         const entry = await (await openKv(bucket)).get(encodeKey(key));
         return entry && entry.operation === "PUT" ? entry.json<T>() : undefined;
       }
-      return (await mirrorFor(bucket)).get(key) as T | undefined;
+      const value = (await mirrorFor(bucket)).get(key);
+      return value === undefined ? undefined : (clone(value) as T);
     },
     async getAll<T = EdgeConfigItems>(keys?: (keyof T)[], opts?: EdgeConfigFunctionsOptions) {
+      if (keys !== undefined) assertIsKeys(keys);
       const all = opts?.consistentRead ? await readAll(await openKv(bucket)) : (await mirrorFor(bucket)).all();
-      if (!keys) return all as T;
-      return Object.fromEntries(keys.filter((k) => String(k) in all).map((k) => [k, all[String(k)]])) as T;
+      if (!keys) return clone(all) as T;
+      return clone(Object.fromEntries(keys.filter((k) => String(k) in all).map((k) => [k, all[String(k)]]))) as T;
     },
     async has(key: string, opts?: EdgeConfigFunctionsOptions) {
+      assertIsKey(key);
+      if (key.trim() === "") return false;
       if (opts?.consistentRead) {
         const entry = await (await openKv(bucket)).get(encodeKey(key));
         return entry !== null && entry.operation === "PUT";
@@ -204,21 +277,21 @@ export function createClient(options: EdgeConfigClientOptions = {}): EdgeConfigC
 let defaultClient: EdgeConfigClient | undefined;
 
 function client(): EdgeConfigClient {
-  return (defaultClient ??= createClient());
+  return (defaultClient ??= createClient(defaultConnectionString()));
 }
 
-export const get = <T = EdgeConfigValue>(key: string, options?: EdgeConfigFunctionsOptions) => client().get<T>(key, options);
-export const getAll = <T = EdgeConfigItems>(keys?: (keyof T)[], options?: EdgeConfigFunctionsOptions) =>
-  client().getAll<T>(keys, options);
-export const has = (key: string, options?: EdgeConfigFunctionsOptions) => client().has(key, options);
-export const digest = (options?: EdgeConfigFunctionsOptions) => client().digest(options);
+export const get: EdgeConfigClient["get"] = (...args) => client().get(...args);
+export const getAll: EdgeConfigClient["getAll"] = (...args) => client().getAll(...args);
+export const has: EdgeConfigClient["has"] = (...args) => client().has(...args);
+export const digest: EdgeConfigClient["digest"] = (...args) => client().digest(...args);
 
-export async function setEdgeConfigItems(
-  items: EdgeConfigItemOperation[],
-  options: EdgeConfigClientOptions = {},
-): Promise<void> {
-  const bucket = options.bucket ?? process.env.NEXT_NATS_EDGE_CONFIG_BUCKET ?? DEFAULT_BUCKET;
-  const kv = await openKv(bucket);
+export async function updateEdgeConfigItems(
+  connectionString: string | undefined,
+  { items }: UpdateEdgeConfigItemsOptions,
+): Promise<{ status: "ok" }> {
+  const connection = parseConnectionString(connectionString ?? defaultConnectionString());
+  if (!connection) throw new Error("@vercel/edge-config: Invalid connection string provided");
+  const kv = await openKv(connection.id);
   for (const item of items) {
     const key = encodeKey(item.key);
     if (item.operation === "delete") {
@@ -252,4 +325,5 @@ export async function setEdgeConfigItems(
       throw err;
     }
   }
+  return { status: "ok" };
 }
