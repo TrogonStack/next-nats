@@ -3,9 +3,14 @@
 Replace `@upstash/ratelimit` with counters in a NATS KV bucket.
 
 ```ts
+import { kv } from "@trogonstack/next-nats/kv";
 import { Ratelimit } from "@trogonstack/next-nats/ratelimit";
 
-const limiter = new Ratelimit({ limiter: Ratelimit.slidingWindow(5, "10 s"), prefix: "api" });
+const limiter = new Ratelimit({
+  redis: kv,
+  limiter: Ratelimit.slidingWindow(5, "10 s"),
+  prefix: "api",
+});
 
 export async function GET(request: Request) {
   const id = request.headers.get("x-forwarded-for") ?? "local";
@@ -20,6 +25,7 @@ export async function GET(request: Request) {
 - `Ratelimit.fixedWindow(tokens, window)`
 - `Ratelimit.slidingWindow(tokens, window)`
 - `Ratelimit.tokenBucket(refillRate, interval, maxTokens)`
+- `Ratelimit.cachedFixedWindow(tokens, window)`
 
 Durations look like `"10 s"` or `"1m"`.
 
@@ -33,4 +39,4 @@ It retries until a slot opens or the next reset would pass the timeout.
 
 ## Use another bucket
 
-Pass `kv: createKv({ bucket: "limits" })` to the constructor.
+Pass a `Redis` client from `@trogonstack/next-nats/redis` built with `new Redis({ bucket: "limits" })` as `redis`.

@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { kv } from "@trogonstack/next-nats/kv";
 import { Ratelimit } from "@trogonstack/next-nats/ratelimit";
 import { rateLimited } from "@/services/nats/http-errors";
 
-const limiter = new Ratelimit({ limiter: Ratelimit.slidingWindow(5, "10 s"), prefix: "demo:route" });
+const limiter = new Ratelimit({ redis: kv, limiter: Ratelimit.slidingWindow(5, "10 s"), prefix: "demo:route" });
 
 export async function GET(request: NextRequest) {
   const identifier = request.headers.get("x-forwarded-for") ?? "local";

@@ -6,6 +6,7 @@ Every module is a subpath export of the `@trogonstack/next-nats` package. Server
 | --- | --- |
 | `@trogonstack/next-nats` | [Core](./core.md): connection, config, publishing, streams, consumers, `raw` |
 | `@trogonstack/next-nats/instrumentation` | `registerNats` for `instrumentation.ts` |
+| `@trogonstack/next-nats/redis` | [Redis](./redis.md) |
 | `@trogonstack/next-nats/kv` | [KV](./kv.md) |
 | `@trogonstack/next-nats/blob` | [Blob](./blob.md) |
 | `@trogonstack/next-nats/queue` | [Queue](./queue.md) |

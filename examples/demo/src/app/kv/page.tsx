@@ -31,7 +31,7 @@ export default function Page() {
       <h1>{feature.title}</h1>
       <p>{feature.blurb}</p>
       <p>
-        Bucket <code>{kv.bucket}</code>
+        Bucket <code>{process.env.NEXT_NATS_KV_BUCKET ?? "kv"}</code>
       </p>
       <h2>Keys</h2>
       <Suspense fallback={<p>loading</p>}>

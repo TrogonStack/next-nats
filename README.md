@@ -13,6 +13,7 @@ export default withNats({ cacheComponents: true }, { cache: true });
 
 | Vercel primitive | Import |
 | --- | --- |
+| Redis | `@trogonstack/next-nats/redis` |
 | KV | `@trogonstack/next-nats/kv` |
 | Blob | `@trogonstack/next-nats/blob` |
 | Queues | `@trogonstack/next-nats/queue` |
