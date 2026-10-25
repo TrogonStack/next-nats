@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Run the edge-config, queue and cron differential suites (needs NATS, see compose:up)"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.config/mise/lib/nats.sh"
+exec pnpm -s vitest run \
+  packages/next-nats/tests/vitest/differential/edge-config \
+  packages/next-nats/tests/vitest/differential/queue \
+  packages/next-nats/tests/vitest/differential/cron \
+  "$@"

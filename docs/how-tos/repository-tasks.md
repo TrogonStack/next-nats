@@ -14,6 +14,7 @@ Every routine action is a mise task.
 | `mise run demo:start` | Run the built demo |
 | `mise run demo:verify-cache` | Check cache coherency across two replicas |
 | `mise run blob-parity` | Compare `@trogonstack/next-nats/blob` with `@vercel/blob` |
+| `mise run parity:edge-queue` | Run the Edge Config, queue and cron differential suites |
 | `mise run ci` | Install, build, typecheck and test |
 
 `NATS_SERVERS` defaults to `nats://nats.next-nats.orb.local:4222` in these tasks. Export it to point somewhere else, or set `NEXT_NATS_COMPOSE_PROJECT` to run an isolated stack whose server is `nats://nats.<project>.orb.local:4222`.

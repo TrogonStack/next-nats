@@ -67,5 +67,10 @@ Defaults follow the real package: visibility timeout 300 seconds (clamped to 30 
 - `StreamTransport` buffers the stream before publishing. Payloads above the NATS maximum throw `PayloadTooLargeError`.
 - `sendBatch` publishes each message separately and never reports `deferred`.
 - Handlers are not registered automatically from the call stack. Declare triggers in `vercel.json` or call `registerDevConsumer`.
-- The default `retryAfterSeconds` is 60, because the real default is not documented in the package.
-- There is no dead letter queue and no delivery limit, as in the real package.
+- The default `retryAfterSeconds` is 60, as in the Vercel Queues concepts documentation.
+- A trigger honors `maxDeliveries`. After a failed callback on or beyond that delivery count the message is dropped. There is no dead letter queue.
+- A message delayed with `initialDelaySeconds` reports delivery count 1 on its first delivery. The count of delayed deliveries is kept in memory, so it is lost when the process restarts and the next delivery then reports a higher count.
+- A `delaySeconds` longer than `retentionSeconds` is accepted and the message expires before it becomes visible, as documented by Vercel.
+- Duplicate sends with the same idempotency key return one deterministic `messageId`, and deduplication uses the 24 hour NATS duplicate window rather than the shorter of the retention and 24 hours.
+- Receipt handles use the encoding of this package, and poll `receive` waits up to one second for messages.
+- `sendBatch` sends in parallel, so batch order is not preserved.

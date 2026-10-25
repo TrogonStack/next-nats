@@ -31,7 +31,7 @@ Exports of `@trogonstack/next-nats/cron`.
 | `runtime` | Cron runtime to use | default runtime |
 | `fetch` | Request function | global `fetch` |
 
-Each entry needs a `path` starting with `/`, which may carry a query string, and a five field `schedule`, evaluated in UTC. The call is a `GET` carrying `x-vercel-cron-schedule` with the entry schedule, and it does not follow redirects. Failed runs are not retried. A status of 400 or above is logged as a failure. A missing file yields no jobs.
+Each entry needs a `path` starting with `/`, which may carry a query string, and a five field `schedule` evaluated in UTC. Schedules cannot use names such as `MON` or `JAN`, cannot set both day of month and day of week, and must hold valid field values. At most one hundred entries are accepted. Violations throw `INVALID_VERCEL_CRON`. The call is a `GET` carrying `x-vercel-cron-schedule` with the entry schedule, and it does not follow redirects. Failed runs are not retried. A status of 400 or above is logged as a failure. A missing file yields no jobs.
 
 ## Definition
 

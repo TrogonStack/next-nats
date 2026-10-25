@@ -19,7 +19,7 @@ Types: `EdgeConfigClient`, `EdgeConfigClientOptions`, `EdgeConfigFunctionsOption
 
 ## Connection string
 
-`edge-config:id=<bucket>`, with optional `token` and `version` parameters that are carried into `connection` and otherwise unused. The default client reads `EDGE_CONFIG`, falling back to `NEXT_NATS_EDGE_CONFIG_BUCKET`.
+`edge-config:id=<bucket>`, parsed with the same rules as `@vercel/edge-config` and with optional `token` and `version` parameters that are carried into `connection` and otherwise unused. The default client reads `EDGE_CONFIG`, falling back to `NEXT_NATS_EDGE_CONFIG_BUCKET`.
 
 ## Options
 

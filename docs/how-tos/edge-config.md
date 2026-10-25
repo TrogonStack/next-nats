@@ -39,4 +39,4 @@ await updateEdgeConfigItems(process.env.EDGE_CONFIG, {
 });
 ```
 
-It resolves `{ status: "ok" }`. `create` fails when the key exists. `update` and `delete` fail when the key is missing, and `update` also fails when the key changed concurrently. Failures throw `EdgeConfigError`. Operations apply in order and are not atomic.
+It resolves `{ status: "ok" }`. `create` fails when the key exists. `update` and `delete` fail when the key is missing, and `update` also fails when the key changed concurrently. Failures throw `EdgeConfigError`. Keys must match `^[A-Za-z0-9_-]{1,256}$`. Every operation is checked against the current items before anything is written, so a failing batch changes nothing unless a concurrent writer interferes.

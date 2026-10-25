@@ -207,6 +207,11 @@ export function createCronRuntime(options: CronRuntimeOptions = {}): CronRuntime
           const { js } = await getNats();
           const consumer = await js.consumers.get(stream, durable);
           iterator = await consumer.consume({ max_messages: 1, idle_heartbeat: 5_000 });
+          if (abort.signal.aborted) {
+            void iterator.close().catch(() => undefined);
+            iterator = undefined;
+            break;
+          }
           retry = 1_000;
           for await (const msg of iterator) {
             if (abort.signal.aborted) {

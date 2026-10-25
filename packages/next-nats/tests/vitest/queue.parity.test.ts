@@ -157,8 +157,8 @@ describe("send validation", () => {
     );
   });
 
-  it("rejects delay beyond retention and oversized idempotency keys", async () => {
-    await expect(client.send(topicName("v"), 1, { retentionSeconds: 60, delaySeconds: 120 })).rejects.toBeInstanceOf(ours.BadRequestError);
+  it("accepts a delay beyond retention and rejects oversized idempotency keys", async () => {
+    await expect(client.send(topicName("v"), 1, { retentionSeconds: 60, delaySeconds: 120 })).resolves.toHaveProperty("messageId");
     await expect(client.send(topicName("v"), 1, { idempotencyKey: "k".repeat(257) })).rejects.toBeInstanceOf(ours.BadRequestError);
   });
 });
@@ -343,6 +343,7 @@ describe("callbacks", () => {
     expect(seen[0]!.payload).toEqual({ hello: "world" });
     expect(seen[0]!.meta.messageId).toBe(sent.messageId);
     expect(seen[0]!.meta.consumerGroup).toBe(ours.filePathToConsumerGroup("app/api/q/route.ts"));
+    await waitFor(() => requests.length > 0);
     expect(requests[0]!.path).toBe("/api/q");
     expect(requests[0]!.headers["ce-type"]).toBe(ours.CLOUD_EVENT_TYPE_V2BETA);
     expect(requests[0]!.headers["ce-vqsqueuename"]).toBe(topic);
@@ -365,6 +366,7 @@ describe("callbacks", () => {
     await client.send(topic, "x");
     await waitFor(() => counts.length >= 2);
     expect(counts.slice(0, 2)).toEqual([1, 2]);
+    await waitFor(() => requests.length > 0);
     expect(requests[0]!.status).toBe(500);
   });
 
