@@ -59,4 +59,4 @@ The `token`, `oidcToken` and `storeId` options are accepted so call sites compil
 
 ## Errors
 
-`BlobError` and the subclasses of `@vercel/blob`: `BlobAccessError`, `BlobContentTypeNotAllowedError`, `BlobPathnameMismatchError`, `BlobClientTokenExpiredError`, `BlobFileTooLargeError`, `BlobStoreNotFoundError`, `BlobStoreSuspendedError`, `BlobUnknownError`, `BlobNotFoundError`, `BlobServiceNotAvailable`, `BlobServiceRateLimited`, `BlobRequestAbortedError`, `BlobPreconditionFailedError`. Messages match the real package. `name` is the class name.
+`BlobError` and the subclasses of `@vercel/blob`: `BlobAccessError`, `BlobContentTypeNotAllowedError`, `BlobPathnameMismatchError`, `BlobClientTokenExpiredError`, `BlobFileTooLargeError`, `BlobStoreNotFoundError`, `BlobStoreSuspendedError`, `BlobUnknownError`, `BlobNotFoundError`, `BlobServiceNotAvailable`, `BlobServiceRateLimited`, `BlobRequestAbortedError`, `BlobPreconditionFailedError`. Messages and `name` match the real package, so `name` is `"Error"` and `instanceof` tells the classes apart.

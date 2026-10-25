@@ -16,6 +16,7 @@ export class BlobError extends SpecError {
       message,
       legacyMessage: `Vercel Blob: ${message}`,
     });
+    this.name = "Error";
   }
 }
 
