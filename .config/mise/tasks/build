@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Build the library and the demo"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+exec pnpm build

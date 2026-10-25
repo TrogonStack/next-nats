@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
+#MISE description="Prove two replicas share and invalidate the cache through NATS"
+#MISE depends=["build"]
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$MISE_PROJECT_ROOT/examples/demo"
 
-export NATS_SERVERS="${NATS_SERVERS:-nats://nats.next-nats.orb.local:4222}"
+source "$MISE_PROJECT_ROOT/.config/mise/lib/nats.sh"
 export NEXT_NATS_CACHE_NAMESPACE="verify_$(date +%s)"
 A=3103
 B=3104
