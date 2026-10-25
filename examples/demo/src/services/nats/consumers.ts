@@ -1,4 +1,4 @@
-import { defineConsumer, ensureStream } from "next-nats";
+import { defineConsumer, ensureStream, getLogger } from "next-nats";
 import { defineCron } from "next-nats/cron";
 import { subscribe } from "next-nats/queue";
 import { DEMO_DLQ, DEMO_QUEUE_GROUP, DEMO_QUEUE_TOPIC, DEMO_STREAM, DEMO_SUBJECT } from "@/constants/demo";
@@ -15,7 +15,7 @@ defineConsumer<{ message: string; fail?: boolean }>({
   deadLetter: { subject: DEMO_DLQ },
   handler(payload) {
     if (payload.fail) throw new Error("demo failure");
-    console.log("[demo] received", payload.message);
+    getLogger().info("demo event received", { message: payload.message });
   },
 });
 
@@ -40,7 +40,7 @@ defineCron({
   name: "heartbeat-beater",
   schedule: "* * * * *",
   handler: ({ scheduledAt, replica }) => {
-    console.log("[demo] cron tick", scheduledAt.toISOString(), replica);
+    getLogger().debug("demo cron tick", { scheduledAt: scheduledAt.toISOString(), replica });
   },
 });
 

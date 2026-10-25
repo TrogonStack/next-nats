@@ -8,7 +8,7 @@ interface Operands {
 function parseOperands(raw: unknown): Operands {
   const value = raw as Partial<Operands> | null;
   if (typeof value?.a !== "number" || typeof value.b !== "number" || !Number.isFinite(value.a + value.b)) {
-    throw new Error("a and b must be finite numbers");
+    throw new EndpointError(400, "a and b must be finite numbers", { reason: "NOT_FINITE" });
   }
   return { a: value.a, b: value.b };
 }

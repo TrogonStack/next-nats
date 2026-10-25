@@ -19,8 +19,8 @@ export function Uploader() {
       const { url } = await requestUpload(file.name, type);
       setStatus(`Uploading ${file.size} bytes`);
       const response = await fetch(url, { method: "PUT", body: file, headers: { "content-type": type } });
-      const body = (await response.json()) as { pathname?: string; error?: string };
-      setStatus(response.ok ? `Stored as ${body.pathname}` : `Failed: ${body.error}`);
+      const body = (await response.json()) as { pathname?: string; message?: string };
+      setStatus(response.ok ? `Stored as ${body.pathname}` : `Failed: ${body.message}`);
       router.refresh();
     } finally {
       setBusy(false);
