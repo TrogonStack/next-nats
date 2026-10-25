@@ -121,6 +121,7 @@
     "@vercel/edge-config": "1.5.1",
     "@vercel/kv": "3.0.0",
     "@vercel/queue": "0.10.0",
+    "fast-check": "4.10.2",
     "next": "16.4.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
