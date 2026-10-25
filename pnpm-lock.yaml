@@ -83,7 +83,7 @@ importers:
         specifier: 1.39.0
         version: 1.39.0
       '@vercel/blob':
-        specifier: ^2.8.2
+        specifier: 2.8.2
         version: 2.8.2
       '@vercel/edge-config':
         specifier: 1.5.1
