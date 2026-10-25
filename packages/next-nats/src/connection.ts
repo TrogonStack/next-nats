@@ -1,4 +1,3 @@
-import "server-only";
 import { readFileSync } from "node:fs";
 import { jetstream, jetstreamManager, type JetStreamClient, type JetStreamManager } from "@nats-io/jetstream";
 import { Kvm } from "@nats-io/kv";
