@@ -1,6 +1,8 @@
 import "server-only";
 import { globToRegExp, encodeKey } from "../kv/key.js";
 import { KvStore, UpstashError } from "../kv/store.js";
+import type { Store } from "../kv/store.js";
+import { Transaction } from "../kv/transaction.js";
 import type { KvRecord, RecordKind } from "../kv/store.js";
 import {
   asFloat,
@@ -44,8 +46,9 @@ import type {
 export const internals: unique symbol = Symbol.for("@trogonstack/next-nats/redis.internals");
 
 export interface RedisInternals {
-  readonly store: KvStore;
+  readonly store: Store;
   readonly auto: boolean;
+  readonly transaction?: true;
 }
 
 const KIND_OF_TYPE: Record<string, RecordKind> = { string: "s", hash: "h", list: "l", set: "S", zset: "z" };
@@ -96,7 +99,7 @@ export class Redis {
     return new this({ ...config });
   }
 
-  private get store(): KvStore {
+  private get store(): Store {
     return this[internals].store;
   }
 
@@ -119,6 +122,20 @@ export class Redis {
       if (next === null || isEmptyValue(next)) return { next: rec ? null : undefined, result };
       return { next: rec ? { ...rec, v: next } : { t: kind, v: next }, result };
     });
+  }
+
+  private async transact<R>(fn: (redis: Redis) => Promise<R>): Promise<R> {
+    const { store, auto, transaction } = this[internals];
+    if (transaction || !(await store.atomic)) return fn(this);
+    for (let attempt = 0; attempt < store.maxRetries; attempt++) {
+      const tx = new Transaction(store as KvStore);
+      const scoped: Redis = Object.create(this);
+      Object.defineProperty(scoped, internals, { value: { store: tx, auto, transaction: true } });
+      const result = await fn(scoped);
+      if (await tx.flush()) return result;
+      if (attempt > 2) await new Promise((r) => setTimeout(r, Math.random() * Math.min(5 * attempt, 50)));
+    }
+    throw new UpstashError("ERR", "transaction contention exceeded the retry limit");
   }
 
   pipeline(): Pipeline {
@@ -1142,4 +1159,34 @@ export class Redis {
     const flat = slice.filter(([m]) => !re || re.test(m)).flatMap(([m, s]) => [this.de<string | number>(m) as string | number, s]);
     return [next, flat];
   }
+}
+
+const TRANSACTIONAL: Array<[string, ((args: unknown[]) => boolean)?]> = [
+  ["mset", (args) => Object.keys((args[0] ?? {}) as object).length > 1],
+  ["msetnx"],
+  ["rename"],
+  ["renamenx"],
+  ["copy"],
+  ["smove"],
+  ["lmove"],
+  ["sdiffstore"],
+  ["sinterstore"],
+  ["sunionstore"],
+  ["zunionstore"],
+  ["zinterstore"],
+  ["zdiffstore"],
+  ["del", (args) => normalizeKeys(args as string[]).length > 1],
+];
+
+for (const [name, applies] of TRANSACTIONAL) {
+  const original = (Redis.prototype as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[name];
+  if (!original) continue;
+  Object.defineProperty(Redis.prototype, name, {
+    configurable: true,
+    writable: true,
+    value: function (this: Redis, ...args: unknown[]) {
+      if (applies && !applies(args)) return original.apply(this, args);
+      return (this as unknown as { transact: Redis["transact"] }).transact((scoped) => original.apply(scoped, args));
+    },
+  });
 }

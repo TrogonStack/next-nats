@@ -34,11 +34,19 @@ Sorted sets: `zadd zcard zcount zlexcount zincrby zscore zmscore zrank zrevrank 
 
 Batching: `pipeline()` and `multi()`.
 
-## Pipelines
+## Pipelines and transactions
 
-Both return a chainable object with every command above plus `exec()` and `length()`. `exec()` resolves the results in order and throws on the first failed command. `exec({ keepErrors: true })` resolves `{ error?, result }` entries instead.
+Both return a chainable object with every command above plus `exec()` and `length()`. `exec()` resolves the results in order. Every queued command runs even when one fails, then `exec()` throws the first error. `exec({ keepErrors: true })` resolves `{ error?, result }` entries instead.
 
-`multi()` is not atomic: commands run one after another and other clients can interleave. Each command is still individually atomic.
+`pipeline()` runs the commands one after another and other clients can interleave.
+
+`multi()` is a real transaction. The commands run against a staged view of the keys, and the writes are committed as one JetStream atomic batch whose messages each carry the revision the key had when it was first read. If any key changed in the meantime the whole batch is rejected and the transaction runs again, so either every write lands or none does. A key that a transaction only reads is not revalidated, so a read-only command inside `multi()` can return a value that is slightly stale.
+
+## Atomic multi-key commands
+
+`mset` and `del` with several keys, plus `msetnx`, `rename`, `renamenx`, `copy`, `smove`, `lmove`, `sdiffstore`, `sinterstore`, `sunionstore`, `zunionstore`, `zinterstore` and `zdiffstore`, use the same atomic batch. The server must be nats-server 2.12 or later; the client enables `allow_atomic` on the bucket stream the first time it opens it. When the server cannot enable it, these commands and `multi()` fall back to running their writes one after another.
+
+A transaction can touch at most 1000 keys. `flushdb` and `flushall` are not transactional.
 
 ## Unsupported
 
@@ -50,7 +58,7 @@ These throw `UnsupportedCommandError`, or are absent:
 
 ## Semantic differences
 
-- Multi-key commands (`mset`, `msetnx`, `rename`, `smove`, `lmove`, `*store`, multi-key `del`) are not transactions.
+- Without atomic batch support on the server, multi-key commands and `multi()` are not transactions.
 - `scan` and the `*scan` commands page by position over a sorted listing, so concurrent writes may be missed or repeated. `keys` and `scan` list the whole bucket and are not meant for large buckets.
 - Random commands (`randomkey`, `hrandfield`, `srandmember`, `spop`) use a local random source.
 

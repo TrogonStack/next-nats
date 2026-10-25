@@ -3,6 +3,7 @@ import type { Redis } from "./redis.js";
 const HELPERS = new Set([
   "constructor",
   "pipeline",
+  "transact",
   "multi",
   "createScript",
   "de",
@@ -60,6 +61,8 @@ function commandNames(redis: Redis): string[] {
   return names;
 }
 
+type Outcome = { error?: string; result: unknown; cause?: unknown };
+
 class PipelineImpl {
   private readonly queue: Array<{ name: string; args: unknown[] }> = [];
 
@@ -74,19 +77,26 @@ class PipelineImpl {
 
   async exec(options?: { keepErrors: true }): Promise<unknown[]> {
     const queued = this.queue.splice(0);
-    const results: Array<{ error?: string; result: unknown }> = [];
-    for (const { name, args } of queued) {
-      try {
-        const run = (this.redis as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[name] as (
+    const run = async (target: Redis) => {
+      const results: Outcome[] = [];
+      for (const { name, args } of queued) {
+        const command = (target as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[name] as (
           ...a: unknown[]
         ) => Promise<unknown>;
-        results.push({ result: await run.apply(this.redis, args) });
-      } catch (error) {
-        if (!options?.keepErrors) throw error;
-        results.push({ error: error instanceof Error ? error.message : String(error), result: null });
+        try {
+          results.push({ result: await command.apply(target, args) });
+        } catch (error) {
+          results.push({ error: error instanceof Error ? error.message : String(error), result: null, cause: error });
+        }
       }
-    }
-    return options?.keepErrors ? results : results.map((r) => r.result);
+      return results;
+    };
+    const results: Outcome[] = this.atomic
+      ? await (this.redis as unknown as { transact: (fn: (r: Redis) => Promise<Outcome[]>) => Promise<Outcome[]> }).transact(run)
+      : await run(this.redis);
+    const failed = results.find((r) => r.error !== undefined);
+    if (failed && !options?.keepErrors) throw failed.cause;
+    return options?.keepErrors ? results.map(({ error, result }) => (error === undefined ? { result } : { error, result })) : results.map((r) => r.result);
   }
 
   push(name: string, args: unknown[]): this {

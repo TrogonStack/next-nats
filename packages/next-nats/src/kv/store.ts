@@ -1,7 +1,8 @@
 import "server-only";
 import { JetStreamApiCodes, JetStreamApiError } from "@nats-io/jetstream";
 import type { KV } from "@nats-io/kv";
-import { getJs, openKv } from "../connection.js";
+import { headers } from "@nats-io/nats-core";
+import { getJs, getJsm, getNc, openKv } from "../connection.js";
 import { Code, SpecError } from "../errors.js";
 import { decodeKey, encodeKey } from "./key.js";
 
@@ -25,7 +26,18 @@ export interface KvStoreOptions {
 interface Handle {
   kv: KV;
   nativeTtl: boolean;
+  atomic: boolean;
 }
+
+export interface BatchOp {
+  key: string;
+  rec: KvRecord | null;
+  expected: number | undefined;
+}
+
+export const MAX_BATCH = 1000;
+
+export type Store = Pick<KvStore, "bucket" | "maxRetries" | "nativeTtl" | "atomic" | "kv" | "read" | "write" | "remove" | "mutate" | "allKeys">;
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -91,8 +103,18 @@ export class KvStore {
         });
         status = await kv.status();
       }
-      const nativeTtl = status.streamInfo.config.allow_msg_ttl === true;
-      return { kv, nativeTtl };
+      const config = status.streamInfo.config;
+      const nativeTtl = config.allow_msg_ttl === true;
+      let atomic = config.allow_atomic === true;
+      if (!atomic) {
+        try {
+          await (await getJsm()).streams.update(config.name, { ...config, allow_atomic: true });
+          atomic = true;
+        } catch {
+          atomic = false;
+        }
+      }
+      return { kv, nativeTtl, atomic };
     })();
     this.handle.catch(() => {
       this.handle = undefined;
@@ -102,6 +124,10 @@ export class KvStore {
 
   get nativeTtl(): Promise<boolean> {
     return this.open().then((h) => h.nativeTtl);
+  }
+
+  get atomic(): Promise<boolean> {
+    return this.open().then((h) => h.atomic);
   }
 
   async kv(): Promise<KV> {
@@ -164,6 +190,53 @@ export class KvStore {
       if (attempt > 2) await new Promise((r) => setTimeout(r, Math.random() * Math.min(5 * attempt, 50)));
     }
     throw new UpstashError("ERR", `contention on key "${key}" exceeded ${this.maxRetries} retries`, { code: Code.ABORTED, reason: "CONTENTION" });
+  }
+
+  async commit(ops: BatchOp[]): Promise<boolean> {
+    if (ops.length === 0) return true;
+    if (ops.length > MAX_BATCH) {
+      throw new UpstashError("ERR", `transaction touches ${ops.length} keys, the limit is ${MAX_BATCH}`);
+    }
+    const { kv, nativeTtl, atomic } = await this.open();
+    const only = ops[0] as BatchOp;
+    if (ops.length === 1) {
+      if (only.rec) return this.write(only.key, only.rec, only.expected);
+      if (only.expected !== undefined) return this.remove(only.key, only.expected);
+      await kv.delete(encodeKey(only.key));
+      return true;
+    }
+    if (!atomic) throw new UpstashError("ERR", "the server does not support atomic batch publish");
+    const nc = await getNc();
+    const id = crypto.randomUUID();
+    const last = ops.length - 1;
+    const replies: Promise<unknown>[] = [];
+    for (const [i, op] of ops.entries()) {
+      const h = headers();
+      h.set("Nats-Batch-Id", id);
+      h.set("Nats-Batch-Sequence", String(i + 1));
+      if (op.expected !== undefined) h.set("Nats-Expected-Last-Subject-Sequence", String(op.expected));
+      if (op.rec === null) h.set("KV-Operation", "DEL");
+      else if (nativeTtl && op.rec.x !== undefined) {
+        h.set("Nats-TTL", `${Math.max(1, Math.ceil((op.rec.x - Date.now()) / 1000))}s`);
+      }
+      const subject = `$KV.${this.bucket}.${encodeKey(op.key)}`;
+      const data = op.rec === null ? new Uint8Array() : encoder.encode(JSON.stringify(op.rec));
+      if (i < last) {
+        nc.publish(subject, data, { headers: h });
+        continue;
+      }
+      h.set("Nats-Batch-Commit", "1");
+      replies.push(nc.request(subject, data, { headers: h, timeout: 10_000 }));
+    }
+    const msg = (await replies[0]) as { json: <T>() => T };
+    const ack = msg.json<{ count?: number; error?: { code: number; err_code: number; description: string } }>();
+    if (ack.error) {
+      if (ack.error.err_code === JetStreamApiCodes.StreamWrongLastSequence || ack.error.err_code === JetStreamApiCodes.StreamWrongLastSequenceUnknown) {
+        return false;
+      }
+      throw new UpstashError("ERR", `atomic batch rejected: ${ack.error.description}`, { code: Code.ABORTED });
+    }
+    return ack.count === ops.length;
   }
 
   async allKeys(): Promise<string[]> {

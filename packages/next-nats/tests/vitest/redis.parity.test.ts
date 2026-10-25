@@ -292,3 +292,82 @@ describe("unsupported", () => {
     await expect(kv.eval("return 1", [], [])).rejects.toBeInstanceOf(errors.UnsupportedCommandError);
   });
 });
+
+describe("atomic multi-key operations", () => {
+  it("msetnx has a single winner and never leaves a partial write", async () => {
+    const results = await Promise.all(
+      Array.from({ length: 20 }, (_, i) => kv.msetnx({ "tx:m:a": i, "tx:m:b": i, "tx:m:c": i })),
+    );
+    expect(results.filter((r) => r === 1)).toHaveLength(1);
+    const [a, b, c] = await kv.mget<number[]>("tx:m:a", "tx:m:b", "tx:m:c");
+    expect(a).toBe(b);
+    expect(b).toBe(c);
+  });
+
+  it("concurrent mset leaves every key from the same writer", async () => {
+    await Promise.all(Array.from({ length: 25 }, (_, i) => kv.mset({ "tx:w:p": i, "tx:w:q": i, "tx:w:r": i })));
+    const [p, q, r] = await kv.mget<number[]>("tx:w:p", "tx:w:q", "tx:w:r");
+    expect(q).toBe(p);
+    expect(r).toBe(p);
+  });
+
+  it("msetnx fails as a whole when one key exists", async () => {
+    await kv.set("tx:n:b", "taken");
+    expect(await kv.msetnx({ "tx:n:a": 1, "tx:n:b": 2, "tx:n:c": 3 })).toBe(0);
+    expect(await kv.exists("tx:n:a", "tx:n:c")).toBe(0);
+  });
+
+  it("multi transfers keep the total exact under contention", async () => {
+    await kv.mset({ "tx:acct:x": 100, "tx:acct:y": 0 });
+    await Promise.all(
+      Array.from({ length: 30 }, () => kv.multi().decrby("tx:acct:x", 1).incrby("tx:acct:y", 1).exec()),
+    );
+    expect(await kv.get("tx:acct:x")).toBe(70);
+    expect(await kv.get("tx:acct:y")).toBe(30);
+  });
+
+  it("multi applies nothing when a conflicting writer wins and retries to a consistent result", async () => {
+    await kv.set("tx:c:a", 0);
+    await kv.set("tx:c:b", 0);
+    const mixed = await Promise.all([
+      ...Array.from({ length: 15 }, () => kv.multi().incr("tx:c:a").incr("tx:c:b").exec()),
+      ...Array.from({ length: 15 }, () => kv.incr("tx:c:a")),
+    ]);
+    expect(mixed).toHaveLength(30);
+    expect(await kv.get("tx:c:a")).toBe(30);
+    expect(await kv.get("tx:c:b")).toBe(15);
+  });
+
+  it("smove keeps a member in exactly one set", async () => {
+    await kv.sadd("tx:s:from", ..."abcdefghij".split("") as [string, ...string[]]);
+    await Promise.all("abcdefghij".split("").map((m) => kv.smove("tx:s:from", "tx:s:to", m)));
+    expect(await kv.scard("tx:s:from")).toBe(0);
+    expect(await kv.scard("tx:s:to")).toBe(10);
+  });
+
+  it("lmove never duplicates or drops elements", async () => {
+    await kv.rpush("tx:l:from", ...(Array.from({ length: 15 }, (_, i) => `e${i}`) as [string, ...string[]]));
+    await Promise.all(Array.from({ length: 15 }, () => kv.lmove("tx:l:from", "tx:l:to", "left", "right")));
+    expect(await kv.llen("tx:l:from")).toBe(0);
+    expect(((await kv.lrange("tx:l:to", 0, -1)) as string[]).sort()).toEqual(
+      Array.from({ length: 15 }, (_, i) => `e${i}`).sort(),
+    );
+  });
+
+  it("rename moves a value atomically and keeps its ttl", async () => {
+    await kv.set("tx:r:src", "v", { ex: 100 });
+    await Promise.all([kv.rename("tx:r:src", "tx:r:dst"), kv.get("tx:r:src"), kv.get("tx:r:dst")]);
+    expect(await kv.get("tx:r:dst")).toBe("v");
+    expect(await kv.exists("tx:r:src")).toBe(0);
+    expect(await kv.ttl("tx:r:dst")).toBeGreaterThan(90);
+  });
+
+  it("multi reports per command errors without discarding the other commands", async () => {
+    await kv.set("tx:e:str", "x");
+    const res = await kv.multi().set("tx:e:ok", 1).hget("tx:e:str", "f").exec({ keepErrors: true });
+    expect(res[0]).toEqual({ result: "OK" });
+    expect(res[1]?.error).toBeDefined();
+    expect(await kv.get("tx:e:ok")).toBe(1);
+    await expect(kv.multi().incr("tx:e:ok").hget("tx:e:str", "f").exec()).rejects.toBeInstanceOf(errors.UpstashError);
+  });
+});
