@@ -4,25 +4,66 @@
   "type": "module",
   "license": "Apache-2.0",
   "sideEffects": false,
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
-    "./instrumentation": { "types": "./dist/instrumentation.d.ts", "default": "./dist/instrumentation.js" },
-    "./kv": { "types": "./dist/kv/index.d.ts", "default": "./dist/kv/index.js" },
-    "./blob": { "types": "./dist/blob/index.d.ts", "default": "./dist/blob/index.js" },
-    "./queue": { "types": "./dist/queue/index.d.ts", "default": "./dist/queue/index.js" },
-    "./edge-config": { "types": "./dist/edge-config/index.d.ts", "default": "./dist/edge-config/index.js" },
-    "./cache": { "types": "./dist/cache/index.d.ts", "default": "./dist/cache/index.js" },
-    "./ratelimit": { "types": "./dist/ratelimit/index.d.ts", "default": "./dist/ratelimit/index.js" },
-    "./realtime": { "types": "./dist/realtime/index.d.ts", "default": "./dist/realtime/index.js" },
-    "./services": { "types": "./dist/services/index.d.ts", "default": "./dist/services/index.js" },
-    "./cron": { "types": "./dist/cron/index.d.ts", "default": "./dist/cron/index.js" },
-    "./health": { "types": "./dist/health/index.d.ts", "default": "./dist/health/index.js" },
-    "./next": { "types": "./dist/next/index.d.ts", "default": "./dist/next/index.js" },
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./instrumentation": {
+      "types": "./dist/instrumentation.d.ts",
+      "default": "./dist/instrumentation.js"
+    },
+    "./kv": {
+      "types": "./dist/kv/index.d.ts",
+      "default": "./dist/kv/index.js"
+    },
+    "./blob": {
+      "types": "./dist/blob/index.d.ts",
+      "default": "./dist/blob/index.js"
+    },
+    "./queue": {
+      "types": "./dist/queue/index.d.ts",
+      "default": "./dist/queue/index.js"
+    },
+    "./edge-config": {
+      "types": "./dist/edge-config/index.d.ts",
+      "default": "./dist/edge-config/index.js"
+    },
+    "./cache": {
+      "types": "./dist/cache/index.d.ts",
+      "default": "./dist/cache/index.js"
+    },
+    "./ratelimit": {
+      "types": "./dist/ratelimit/index.d.ts",
+      "default": "./dist/ratelimit/index.js"
+    },
+    "./realtime": {
+      "types": "./dist/realtime/index.d.ts",
+      "default": "./dist/realtime/index.js"
+    },
+    "./services": {
+      "types": "./dist/services/index.d.ts",
+      "default": "./dist/services/index.js"
+    },
+    "./cron": {
+      "types": "./dist/cron/index.d.ts",
+      "default": "./dist/cron/index.js"
+    },
+    "./health": {
+      "types": "./dist/health/index.d.ts",
+      "default": "./dist/health/index.js"
+    },
+    "./next": {
+      "types": "./dist/next/index.d.ts",
+      "default": "./dist/next/index.js"
+    },
     "./package.json": "./package.json"
   },
   "dependencies": {
@@ -32,12 +73,15 @@
     "@nats-io/obj": "3.4.0",
     "@nats-io/services": "3.4.0",
     "@nats-io/transport-node": "3.4.0",
+    "cron-parser": "^5.10.2",
     "server-only": "^0.0.1"
   },
   "peerDependencies": {
     "next": ">=16"
   },
   "devDependencies": {
+    "@vercel/blob": "^2.8.2",
+    "@vercel/queue": "^0.10.0",
     "next": "16.4.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
