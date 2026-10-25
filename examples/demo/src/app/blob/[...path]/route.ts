@@ -17,3 +17,13 @@ export async function PUT(...args: Parameters<typeof route.PUT>) {
   await connection();
   return route.PUT(...args);
 }
+
+export async function POST(...args: Parameters<typeof route.POST>) {
+  await connection();
+  return route.POST(...args);
+}
+
+export async function DELETE(...args: Parameters<typeof route.DELETE>) {
+  await connection();
+  return route.DELETE(...args);
+}
