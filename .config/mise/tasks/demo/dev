@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Run the demo in development mode"
+#MISE depends=["build"]
+set -euo pipefail
+source "$MISE_PROJECT_ROOT/.config/mise/lib/nats.sh"
+cd "$MISE_PROJECT_ROOT/examples/demo"
+NATS_WORKERS="${NATS_WORKERS:-true}" exec pnpm dev

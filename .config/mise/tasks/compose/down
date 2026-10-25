@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Stop the local NATS server, keeping its data volume"
+set -euo pipefail
+source "$MISE_PROJECT_ROOT/.config/mise/lib/compose.sh"
+compose down

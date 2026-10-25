@@ -1,0 +1,6 @@
+[tools]
+node = "24"
+
+[tasks.ci]
+description = "Install, build, typecheck and test"
+depends = ["install", "build", "typecheck", "test"]

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Start the local NATS server with JetStream"
+set -euo pipefail
+source "$MISE_PROJECT_ROOT/.config/mise/lib/compose.sh"
+compose up -d --wait
