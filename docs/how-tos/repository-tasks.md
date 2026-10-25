@@ -15,6 +15,6 @@ Every routine action is a mise task.
 | `mise run demo:verify-cache` | Check cache coherency across two replicas |
 | `mise run ci` | Install, build, typecheck and test |
 
-`NATS_SERVERS` defaults to `nats://nats.next-nats.orb.local:4222` in these tasks. Export it to point somewhere else.
+`NATS_SERVERS` defaults to `nats://nats.next-nats.orb.local:4222` in these tasks. Export it to point somewhere else, or set `NEXT_NATS_COMPOSE_PROJECT` to run an isolated stack whose server is `nats://nats.<project>.orb.local:4222`.
 
 The compose file lives at `devops/docker/compose/compose.yaml` and keeps the project name `next-nats`.
