@@ -56,14 +56,21 @@ describe("edge config type parity with @vercel/edge-config@1.5.1", () => {
 describe("edge config behavior", () => {
   it("parses the connection string and rejects bad ones", () => {
     expect(parseConnectionString("edge-config:id=my-bucket&token=t")).toEqual({
-      type: "external",
-      baseUrl: "edge-config:my-bucket",
+      type: "vercel",
+      baseUrl: "https://edge-config.vercel.com/my-bucket",
       id: "my-bucket",
       token: "t",
       version: "1",
     });
     expect(parseConnectionString("https://example.com")).toBeNull();
     expect(parseConnectionString("edge-config:token=t")).toBeNull();
+    expect(parseConnectionString("edge-config:id=my-bucket")).toEqual({
+      type: "external",
+      baseUrl: "edge-config:my-bucket",
+      id: "my-bucket",
+      token: "",
+      version: "1",
+    });
     expect(() => createClient(undefined)).toThrow("@vercel/edge-config: No connection string provided");
     expect(() => createClient("nope")).toThrow("@vercel/edge-config: Invalid connection string provided");
     expect(createClient(conn("x"), { staleIfError: false, cache: "force-cache" }).connection.id).toBe("x");
@@ -83,7 +90,7 @@ describe("edge config behavior", () => {
     const result = await updateEdgeConfigItems(conn(BUCKET), {
       items: [
         { operation: "create", key: "greeting", value: "hello" },
-        { operation: "upsert", key: "flags:beta", value: { on: true, pct: 25 } },
+        { operation: "upsert", key: "flags_beta", value: { on: true, pct: 25 } },
         { operation: "upsert", key: "list", value: [1, 2, 3] },
       ],
     });
@@ -102,17 +109,17 @@ describe("edge config behavior", () => {
   it("reads from the local mirror", async () => {
     const ec = createClient(conn(BUCKET));
     expect(await ec.get("greeting")).toBe("hello");
-    expect(await ec.get("flags:beta")).toEqual({ on: true, pct: 25 });
+    expect(await ec.get("flags_beta")).toEqual({ on: true, pct: 25 });
     expect(await ec.has("list")).toBe(true);
-    expect(await ec.getAll()).toEqual({ greeting: "hello", "flags:beta": { on: true, pct: 25 }, list: [1, 2, 3] });
+    expect(await ec.getAll()).toEqual({ greeting: "hello", "flags_beta": { on: true, pct: 25 }, list: [1, 2, 3] });
     expect(await ec.getAll(["greeting", "nope"])).toEqual({ greeting: "hello" });
   });
 
   it("returns values the caller may mutate", async () => {
     const ec = createClient(conn(BUCKET));
-    const flags = (await ec.get<{ on: boolean }>("flags:beta"))!;
+    const flags = (await ec.get<{ on: boolean }>("flags_beta"))!;
     flags.on = false;
-    expect((await ec.get<{ on: boolean }>("flags:beta"))!.on).toBe(true);
+    expect((await ec.get<{ on: boolean }>("flags_beta"))!.on).toBe(true);
   });
 
   it("propagates changes through the watch", async () => {
