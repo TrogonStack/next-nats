@@ -2,7 +2,7 @@
 import "server-only";
 
 import { revalidatePath } from "next/cache";
-import { has, setEdgeConfigItems } from "@trogonstack/next-nats/edge-config";
+import { has, updateEdgeConfigItems } from "@trogonstack/next-nats/edge-config";
 
 export type EdgeConfigState = { message: string };
 
@@ -25,7 +25,7 @@ export async function upsertItem(_prev: EdgeConfigState, data: FormData): Promis
   } catch {
     value = raw;
   }
-  await setEdgeConfigItems([{ operation: "upsert", key, value: value as never }]);
+  await updateEdgeConfigItems(undefined, { items: [{ operation: "upsert", key, value: value as never }] });
   await settled(key, true);
   revalidatePath("/edge-config");
   return { message: `Wrote ${key}; this process mirror picked it up through kv.watch()` };
@@ -34,7 +34,7 @@ export async function upsertItem(_prev: EdgeConfigState, data: FormData): Promis
 export async function deleteItem(_prev: EdgeConfigState, data: FormData): Promise<EdgeConfigState> {
   const key = text(data, "key");
   try {
-    await setEdgeConfigItems([{ operation: "delete", key }]);
+    await updateEdgeConfigItems(undefined, { items: [{ operation: "delete", key }] });
   } catch (err) {
     return { message: err instanceof Error ? err.message : "Delete failed" };
   }

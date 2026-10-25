@@ -34,4 +34,5 @@ Peer dependencies are `next` and, optionally, `react`.
 | `config` | `NatsConfigInput` applied before connecting |
 | `setup` | Callback run after connecting, usually a dynamic import of the module that defines consumers, services and crons |
 | `connectOnStart` | Connect eagerly. Defaults to `true` |
+| `vercelCrons` | `true` or [`VercelCronsOptions`](./cron.md#vercel-crons) starts the crons declared in `vercel.json` |
 | `onError` | Receives connection and setup failures. Defaults to logging |

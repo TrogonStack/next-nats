@@ -11,6 +11,28 @@ Exports of `@trogonstack/next-nats/cron`.
 | `nextOccurrence(schedule, from, timezone?)`, `validateSchedule` | Schedule helpers |
 | `listCronRuns({ name?, limit? })`, `recordCronRun(run)` | Run history, newest first, default limit `20` |
 
+## Vercel crons
+
+| Export | Description |
+| --- | --- |
+| `registerVercelCrons(options?)` | Define one job per `crons` entry of `vercel.json`. Returns the `CronJob` list |
+| `readVercelCrons(configPath?)` | Parse and validate the `crons` array |
+| `vercelCronName(cron)` | Job name derived from path and schedule |
+| `VERCEL_CRON_USER_AGENT` | `vercel-cron/1.0` |
+
+`VercelCronsOptions`:
+
+| Option | Meaning | Default |
+| --- | --- | --- |
+| `configPath` | File with the `crons` array, relative to the working directory | `vercel.json` |
+| `baseUrl` | Address called | `NEXT_NATS_CRON_BASE_URL`, else `http://127.0.0.1:$PORT` |
+| `secret` | Bearer token | `CRON_SECRET`, read at call time |
+| `timeoutMs` | Request deadline | five minutes |
+| `runtime` | Cron runtime to use | default runtime |
+| `fetch` | Request function | global `fetch` |
+
+Each entry needs a `path` starting with `/`, which may carry a query string, and a five field `schedule`, evaluated in UTC. The call is a `GET` that does not follow redirects. A status of 400 or above fails the run, and failed runs are not retried. A missing file yields no jobs.
+
 ## Definition
 
 | Field | Meaning | Default |

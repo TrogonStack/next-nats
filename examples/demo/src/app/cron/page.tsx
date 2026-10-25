@@ -11,6 +11,9 @@ export default function Page() {
       <p>
         <code>heartbeat-beater</code> runs every minute. Each tick executes on exactly one replica.
       </p>
+      <p>
+        <code>vercel.json</code> declares a Vercel cron for <code>/api/cron/heartbeat</code>. The route checks <code>CRON_SECRET</code> the way it does on Vercel.
+      </p>
       <CronRuns />
     </main>
   );

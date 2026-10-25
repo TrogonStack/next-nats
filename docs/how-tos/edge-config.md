@@ -1,15 +1,20 @@
 # Read Edge Config
 
-Replace `@vercel/edge-config` with a KV bucket mirrored into process memory.
+Replace `@vercel/edge-config` with a KV bucket mirrored into process memory. Change the import specifier and keep the code.
 
 ```ts
-import { get, getAll, has, digest } from "@trogonstack/next-nats/edge-config";
+import { get, getAll, has, digest, createClient } from "@trogonstack/next-nats/edge-config";
 
 const flag = await get<boolean>("new-checkout");
 const all = await getAll();
+const client = createClient(process.env.EDGE_CONFIG);
 ```
 
 Reads come from an in-process mirror kept current by a watcher, so they do not wait on the network. The first read waits for the mirror to catch up.
+
+## Choose the bucket
+
+Set `EDGE_CONFIG` to `edge-config:id=<bucket>`. When it is unset, the default client uses `NEXT_NATS_EDGE_CONFIG_BUCKET` (default `edge-config`). The NATS servers come from `NATS_SERVERS`.
 
 ## Read the latest value
 
@@ -21,17 +26,17 @@ await get("new-checkout", { consistentRead: true });
 
 ## Write items
 
-```ts
-import { setEdgeConfigItems } from "@trogonstack/next-nats/edge-config";
+The Vercel SDK has no writes. Vercel exposes them through a REST call that takes `items` with an `operation` of `create`, `update`, `upsert` or `delete`. This package offers the same shape as a function:
 
-await setEdgeConfigItems([
-  { operation: "upsert", key: "new-checkout", value: true },
-  { operation: "delete", key: "old-banner" },
-]);
+```ts
+import { updateEdgeConfigItems } from "@trogonstack/next-nats/edge-config";
+
+await updateEdgeConfigItems(process.env.EDGE_CONFIG, {
+  items: [
+    { operation: "upsert", key: "new-checkout", value: true },
+    { operation: "delete", key: "old-banner" },
+  ],
+});
 ```
 
-`create` fails when the key exists. `update` fails when the key is missing or changed concurrently.
-
-## Choose the bucket
-
-Set `NEXT_NATS_EDGE_CONFIG_BUCKET` (default `edge-config`) or call `createClient({ bucket })`.
+It resolves `{ status: "ok" }`. `create` fails when the key exists. `update` and `delete` fail when the key is missing, and `update` also fails when the key changed concurrently. Failures throw `EdgeConfigError`. Operations apply in order and are not atomic.

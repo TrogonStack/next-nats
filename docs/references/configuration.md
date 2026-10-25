@@ -50,7 +50,15 @@ Secret variables accept the plain value or the Secret Value Syntax `secret:[nid]
 | --- | --- | --- |
 | `NEXT_NATS_KV_BUCKET` | Bucket behind `kv` | `kv` |
 | `NEXT_NATS_BLOB_BUCKET` | Object Store bucket for blobs | see [Blob](./blob.md) |
-| `NEXT_NATS_EDGE_CONFIG_BUCKET` | Edge Config bucket | `edge-config` |
+| `EDGE_CONFIG` | Edge Config connection string, `edge-config:id=<bucket>` | `edge-config:id=` plus `NEXT_NATS_EDGE_CONFIG_BUCKET` |
+| `NEXT_NATS_EDGE_CONFIG_BUCKET` | Bucket used when `EDGE_CONFIG` is unset | `edge-config` |
+
+## Cron
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `CRON_SECRET` | Sent as `Authorization: Bearer` on `vercel.json` cron calls, as on Vercel | unset, no header |
+| `NEXT_NATS_CRON_BASE_URL` | Base URL the `vercel.json` cron worker calls | `http://127.0.0.1:$PORT`, port `3000` |
 
 ## Cache
 
