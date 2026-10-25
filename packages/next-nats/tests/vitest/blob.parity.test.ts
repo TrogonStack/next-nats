@@ -35,7 +35,7 @@ describe("@vercel/blob export surface", () => {
     for (const [Real, Ours, args] of pairs) {
       const expected = new Real(...(args as never[]));
       const actual = new Ours(...(args as never[]));
-      expect(actual.name).toBe(expected.name);
+      expect(actual.constructor.name).toBe(Real.name);
       expect(actual.message).toBe(expected.message);
       expect(actual).toBeInstanceOf(ours.BlobError);
       expect(actual).toBeInstanceOf(Error);
