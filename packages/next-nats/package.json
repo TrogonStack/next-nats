@@ -40,6 +40,14 @@
       "types": "./dist/cache/index.d.ts",
       "default": "./dist/cache/index.js"
     },
+    "./cache/use-cache-handler": {
+      "types": "./dist/cache/use-cache-handler.d.ts",
+      "default": "./dist/cache/use-cache-handler.js"
+    },
+    "./cache/incremental-handler": {
+      "types": "./dist/cache/incremental-handler.d.ts",
+      "default": "./dist/cache/incremental-handler.js"
+    },
     "./ratelimit": {
       "types": "./dist/ratelimit/index.d.ts",
       "default": "./dist/ratelimit/index.js"

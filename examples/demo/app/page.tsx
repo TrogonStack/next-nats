@@ -2,8 +2,6 @@ import Link from "next/link";
 import { features } from "@/lib/features";
 import { PublishForm } from "./publish/form";
 
-export const dynamic = "force-dynamic";
-
 export default function Home() {
   return (
     <main>

@@ -1,3 +1,7 @@
-export { GET } from "next-nats/health";
+import { connection } from "next/server";
+import { GET as health } from "next-nats/health";
 
-export const dynamic = "force-dynamic";
+export async function GET(...args: Parameters<typeof health>) {
+  await connection();
+  return health(...args);
+}
