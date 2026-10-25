@@ -70,6 +70,9 @@ importers:
         specifier: ^0.0.1
         version: 0.0.1
     devDependencies:
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
       '@upstash/ratelimit':
         specifier: ^2.2.0
         version: 2.2.0(@upstash/redis@1.39.0)

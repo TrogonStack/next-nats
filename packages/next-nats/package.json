@@ -48,6 +48,10 @@
       "types": "./dist/realtime/index.d.ts",
       "default": "./dist/realtime/index.js"
     },
+    "./realtime/client": {
+      "types": "./dist/realtime/client.d.ts",
+      "default": "./dist/realtime/client.js"
+    },
     "./services": {
       "types": "./dist/services/index.d.ts",
       "default": "./dist/services/index.js"
@@ -76,9 +80,16 @@
     "server-only": "^0.0.1"
   },
   "peerDependencies": {
-    "next": ">=16"
+    "next": ">=16",
+    "react": ">=19"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
   },
   "devDependencies": {
+    "@types/react": "^19.3.0",
     "@upstash/ratelimit": "^2.2.0",
     "@vercel/edge-config": "^1.5.1",
     "@vercel/kv": "^3.0.0",
