@@ -24,7 +24,7 @@ export async function proxyReachable(): Promise<boolean> {
 export async function requireProxy(): Promise<boolean> {
   const reachable = await proxyReachable();
   if (!reachable && process.env.NEXT_NATS_REQUIRE_REDIS) {
-    throw new Error(`the Redis HTTP proxy at ${PROXY_URL} is unreachable, run mise run redis:parity`);
+    throw new Error(`the Redis HTTP proxy at ${PROXY_URL} is unreachable, run mise run parity:redis`);
   }
   return reachable;
 }
