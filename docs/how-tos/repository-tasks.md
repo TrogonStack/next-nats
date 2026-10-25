@@ -11,6 +11,7 @@ Every routine action is a mise task.
 | `mise run typecheck` | Typecheck every package |
 | `mise run test` | Run the tests against NATS |
 | `mise run parity:redis` | Start Redis and its HTTP proxy, then run the Redis, KV and ratelimit differential suites |
+| `mise run e2e:run` | Build the demo three ways and run the end-to-end suite |
 | `mise run demo:dev` | Run the demo in development mode |
 | `mise run demo:start` | Run the built demo |
 | `mise run demo:verify-cache` | Check cache coherency across two replicas |
@@ -29,3 +30,29 @@ The compose file lives at `devops/docker/compose/compose.yaml` and keeps the pro
 ## Run the Redis parity suite
 
 The `parity:redis` task runs the real `@upstash/redis`, `@vercel/kv` and `@upstash/ratelimit` against a Redis container through an HTTP proxy, and the same scenarios against NATS. Set `NEXT_NATS_PARITY_RUNS` and `NEXT_NATS_PARITY_SEED` to change the number of generated cases and the fast-check seed. Stop the extra containers with `docker compose -p <project> -f devops/docker/compose/compose.yaml --profile redis down -v`.
+
+## Run the end-to-end suite
+
+`mise run e2e:run` builds the library, then builds `examples/demo` with Turbopack, with webpack (`next build --webpack`) and with `VERCEL=1`. Each build goes to its own directory under `examples/demo/.next-e2e`, so the demo's `.next` is never touched, and the suite removes the directory when it finishes. It then starts `next start` against NATS and checks:
+
+- which implementation each build bundles for every mirrored package
+- the demo pages and routes of each self-hosted build
+- two replicas on one NATS sharing cache invalidation, rate limits, KV, blob signatures, queue delivery, realtime and cron
+- recovery after `docker compose restart nats`, queue redelivery and KV transactions that stay all or nothing
+
+The resilience tests restart the NATS container of the compose project, so run the suite in an isolated stack:
+
+```sh
+export NEXT_NATS_COMPOSE_PROJECT=nn-e2e
+mise run compose:up
+mise run e2e:run
+```
+
+The suite uses ports 3840 to 3859 and waits for one real cron tick, so a full run takes a few minutes. Extra arguments go to vitest, for example `mise run e2e:run replicas`.
+
+| Variable | Effect |
+| --- | --- |
+| `E2E_SKIP_BUILD` | Reuse the builds already in `examples/demo/.next-e2e` |
+| `E2E_KEEP_BUILDS` | Keep `examples/demo/.next-e2e` after the run |
+
+Both are meant for iterating on one test file: keep the builds from a first run, then skip the build on the next.

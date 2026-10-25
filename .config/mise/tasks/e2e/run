@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Build the demo three ways and run the end-to-end suite (needs NATS, see compose:up)"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.config/mise/lib/nats.sh"
+pnpm --filter @trogonstack/next-nats build
+exec pnpm exec vitest run -c packages/next-nats/tests/e2e/vitest.config.ts "$@"
