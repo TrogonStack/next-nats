@@ -1,0 +1,7 @@
+node_modules
+.next
+dist
+*.tsbuildinfo
+.env.local
+.trogonai
+next-env.d.ts
