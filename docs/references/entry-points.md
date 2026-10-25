@@ -18,7 +18,9 @@ Every module is a subpath export of the `next-nats` package. Server modules impo
 | `next-nats/realtime/client` | `useNatsEvents` React hook |
 | `next-nats/services` | [Services](./services.md) |
 | `next-nats/cron` | [Cron](./cron.md) |
-| `next-nats/health` | [Health](./health.md) |
+| `next-nats/health` | [Health](./health.md) handler factories |
+| `next-nats/health/readiness` | Readiness route handler |
+| `next-nats/health/liveness` | Liveness route handler |
 | `next-nats/next` | `withNats` for `next.config.ts` |
 
 Peer dependencies are `next` and, optionally, `react`.

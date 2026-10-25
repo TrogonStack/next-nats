@@ -29,6 +29,10 @@ The first match wins, in this order.
 
 With none set the connection is unauthenticated.
 
+## Secrets
+
+Secret variables accept the plain value or the Secret Value Syntax `secret:[nid]:[nss]:[value]`, where the value is used and the rest is a label. Parsed secrets are held in the `Secret` value object exported from `next-nats`: `Secret.parse` and `Secret.of` create one, `reveal()` returns the value, and `toString`, `toJSON` and inspection print `[REDACTED]`. `examples/demo/.env.example` shows each variable.
+
 ## TLS
 
 | Variable | Meaning |

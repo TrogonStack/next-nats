@@ -23,6 +23,10 @@ Exports of `next-nats`.
 
 Branded string types and constructors that validate their input: `Subject` and `subject()`, `StreamName` and `streamName()`, `BucketName` and `bucketName()`, `DurableName` and `durableName()`, plus the `Brand` helper type.
 
+## Secret
+
+`Secret` wraps a sensitive string so it does not leak through logging or serialization. See [Secrets](./configuration.md#secrets).
+
 ## Codec
 
 `codec` encodes and decodes JSON payloads: `encodeJson`, `decodeJson`, `tryDecodeJson`.
