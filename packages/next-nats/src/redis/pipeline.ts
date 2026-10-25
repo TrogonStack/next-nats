@@ -1,4 +1,5 @@
-import type { Redis } from "./redis.js";
+import { UpstashError } from "../kv/store.js";
+import { Redis, internals } from "./redis.js";
 
 const HELPERS = new Set([
   "constructor",
@@ -31,6 +32,12 @@ type CommandName = {
 }[keyof Redis] &
   string;
 
+const UPPERCASE_ON_WIRE = new Set(["copy"]);
+
+function wireName(name: string): string {
+  return UPPERCASE_ON_WIRE.has(name) ? name.toUpperCase() : name;
+}
+
 export type PipelineCommandName = Exclude<CommandName, "pipeline" | "multi" | "createScript">;
 
 type Chainable = { [K in PipelineCommandName]: (...args: Parameters<Redis[K]>) => Pipeline };
@@ -47,7 +54,7 @@ export interface Pipeline extends Chainable {
 
 let names: string[] | undefined;
 
-function commandNames(redis: Redis): string[] {
+export function commandNames(redis: Redis): string[] {
   names ??= (() => {
     const found = new Set<string>();
     for (let proto = Object.getPrototypeOf(redis) as object | null; proto && proto !== Object.prototype; proto = Object.getPrototypeOf(proto)) {
@@ -79,12 +86,13 @@ class PipelineImpl {
     const queued = this.queue.splice(0);
     const run = async (target: Redis) => {
       const results: Outcome[] = [];
+      const bare = Object.create(Redis.prototype, { [internals]: { value: target[internals] } }) as Redis;
       for (const { name, args } of queued) {
-        const command = (target as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[name] as (
+        const command = (Redis.prototype as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[name] as (
           ...a: unknown[]
         ) => Promise<unknown>;
         try {
-          results.push({ result: await command.apply(target, args) });
+          results.push({ result: await command.apply(bare, args) });
         } catch (error) {
           results.push({ error: error instanceof Error ? error.message : String(error), result: null, cause: error });
         }
@@ -94,8 +102,12 @@ class PipelineImpl {
     const results: Outcome[] = this.atomic
       ? await (this.redis as unknown as { transact: (fn: (r: Redis) => Promise<Outcome[]>) => Promise<Outcome[]> }).transact(run)
       : await run(this.redis);
-    const failed = results.find((r) => r.error !== undefined);
-    if (failed && !options?.keepErrors) throw failed.cause;
+    const failedIndex = results.findIndex((r) => r.error !== undefined);
+    if (failedIndex >= 0 && !options?.keepErrors) {
+      const cause = results[failedIndex]?.cause;
+      if (!(cause instanceof UpstashError)) throw cause;
+      throw new UpstashError(`Command ${failedIndex + 1} [ ${wireName(queued[failedIndex]?.name ?? "")} ] failed: ${cause.code}`, cause.spec.message);
+    }
     return options?.keepErrors ? results.map(({ error, result }) => (error === undefined ? { result } : { error, result })) : results.map((r) => r.result);
   }
 

@@ -9,6 +9,8 @@ import {
   asInteger,
   checkKind,
   deserialize,
+  deserializeHashValue,
+  deserializePlain,
   inLexRange,
   inScoreRange,
   isEmptyValue,
@@ -24,7 +26,7 @@ import {
 } from "./codec.js";
 import type { ZEntry } from "./codec.js";
 import { UnsupportedCommandError } from "./errors.js";
-import { createPipeline } from "./pipeline.js";
+import { commandNames, createPipeline } from "./pipeline.js";
 import type { Pipeline } from "./pipeline.js";
 import type {
   ExpireOption,
@@ -50,6 +52,15 @@ export interface RedisInternals {
   readonly auto: boolean;
   readonly transaction?: true;
 }
+
+const HASH_INTEGER = "hash value is not an integer";
+const HASH_FLOAT = "hash value is not a float";
+
+const AUTO_PIPELINE_PREFIX = "Command failed: ";
+
+const DIRECT_COMMANDS = new Set([
+  "scan", "keys", "flushdb", "flushall", "dbsize", "hscan", "hgetall", "hkeys", "lrange", "sscan", "smembers", "zscan", "zrange",
+]);
 
 const KIND_OF_TYPE: Record<string, RecordKind> = { string: "s", hash: "h", list: "l", set: "S", zset: "z" };
 const TYPE_OF_KIND: Record<RecordKind, Type> = { s: "string", h: "hash", l: "list", S: "set", z: "zset" };
@@ -93,10 +104,36 @@ export class Redis {
   constructor(config: RedisConfigNodejs = {}) {
     const bucket = config.bucket ?? process.env.NEXT_NATS_KV_BUCKET ?? "kv";
     this[internals] = { store: new KvStore({ bucket }), auto: config.automaticDeserialization ?? true };
+    if (config.enableAutoPipelining !== false) this.prefixServerErrors();
   }
 
   static fromEnv(config?: Omit<RedisConfigNodejs, "url" | "token">): Redis {
     return new this({ ...config });
+  }
+
+  private prefixServerErrors(): void {
+    for (const name of commandNames(this)) {
+      const command = (Redis.prototype as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[name];
+      if (typeof command !== "function" || DIRECT_COMMANDS.has(name)) continue;
+      Object.defineProperty(this, name, {
+        configurable: true,
+        writable: true,
+        value: async function (this: Redis, ...args: unknown[]) {
+          try {
+            return await command.apply(this, args);
+          } catch (error) {
+            if (error instanceof UpstashError && !error.message.startsWith(AUTO_PIPELINE_PREFIX)) {
+              error.message = `${AUTO_PIPELINE_PREFIX}${error.message}`;
+            }
+            throw error;
+          }
+        },
+      });
+    }
+  }
+
+  private floatReply(value: number): number {
+    return this.auto ? value : (String(value) as unknown as number);
   }
 
   private get store(): Store {
@@ -147,11 +184,12 @@ export class Redis {
   }
 
   async ping(message?: string): Promise<string> {
-    return message ?? "PONG";
+    // @upstash/redis passes the message string where PingCommand indexes it, so only the first character is sent
+    return this.de<string>(message?.[0] ?? "PONG") as string;
   }
 
   async echo(message: string): Promise<string> {
-    return message;
+    return this.de<string>(message) as string;
   }
 
   async time(): Promise<[number, number]> {
@@ -263,7 +301,11 @@ export class Redis {
   }
 
   async mget<TData extends unknown[]>(...keys: [string[]] | string[]): Promise<TData> {
-    return (await Promise.all(normalizeKeys(keys).map((k) => this.get(k)))) as TData;
+    const values = await Promise.all(normalizeKeys(keys).map(async (k) => {
+      const rec = (await this.store.read(k)).rec;
+      return rec?.t === "s" ? this.de(rec.v as string) : null;
+    }));
+    return values as TData;
   }
 
   async mset<TData>(kv: Record<string, TData>): Promise<"OK"> {
@@ -292,7 +334,7 @@ export class Redis {
   async getrange(key: string, start: number, end: number): Promise<string> {
     const bytes = Buffer.from((await this.load<string>(key, "s")) ?? "");
     const r = range(start, end, bytes.length);
-    return r ? bytes.subarray(r[0], r[1] + 1).toString() : "";
+    return this.de<string>(r ? bytes.subarray(r[0], r[1] + 1).toString() : "") as string;
   }
 
   async setrange(key: string, offset: number, value: string): Promise<number> {
@@ -328,17 +370,17 @@ export class Redis {
     return this.incrby(key, -decrement);
   }
 
-  incrbyfloat(key: string, value: number): Promise<number> {
-    return this.update<string, number>(key, "s", (cur) => {
+  async incrbyfloat(key: string, value: number): Promise<number> {
+    return this.floatReply(await this.update<string, number>(key, "s", (cur) => {
       const next = (cur === null ? 0 : asFloat(cur)) + value;
       if (!Number.isFinite(next)) throw new UpstashError("ERR", "increment would produce NaN or Infinity");
       return { next: String(next), result: next };
-    });
+    }));
   }
 
   async del(...keys: [string[]] | string[]): Promise<number> {
     const counts = await Promise.all(
-      normalizeKeys(keys).map((k) =>
+      [...new Set(normalizeKeys(keys))].map((k) =>
         this.store.mutate(k, (cur) => (cur ? { next: null, result: 1 } : { next: undefined, result: 0 })),
       ),
     );
@@ -424,11 +466,12 @@ export class Redis {
   }
 
   async copy(key: string, destinationKey: string, opts?: { replace: boolean }): Promise<"COPIED" | "NOT_COPIED"> {
+    if (key === destinationKey) throw new UpstashError("ERR", "source and destination objects are the same");
     const { rec } = await this.store.read(key);
-    if (!rec) return "NOT_COPIED";
-    if (!opts?.replace && (await this.store.read(destinationKey)).rec) return "NOT_COPIED";
-    await this.store.write(destinationKey, rec, undefined);
-    return "COPIED";
+    const copied = rec && (opts?.replace || !(await this.store.read(destinationKey)).rec);
+    if (copied) await this.store.write(destinationKey, rec, undefined);
+    if (this.auto) return copied ? "COPIED" : "NOT_COPIED";
+    return (copied ? 1 : 0) as unknown as "COPIED";
   }
 
   async keys(pattern: string): Promise<string[]> {
@@ -516,54 +559,61 @@ export class Redis {
 
   async hgetall<TData extends Record<string, unknown>>(key: string): Promise<TData | null> {
     const h = await this.load<Record<string, string>>(key, "h");
+    if (!this.auto) return Object.entries(h ?? {}).flat() as unknown as TData;
     if (!h || Object.keys(h).length === 0) return null;
-    return Object.fromEntries(Object.entries(h).map(([f, v]) => [f, this.de(v)])) as TData;
+    return Object.fromEntries(Object.entries(h).map(([f, v]) => [f, deserializeHashValue(v, this.auto)])) as TData;
   }
 
   async hmget<TData extends Record<string, unknown>>(key: string, ...fields: string[]): Promise<TData | null> {
     const h = await this.load<Record<string, string>>(key, "h");
+    if (!this.auto) return fields.map((f) => (h && f in h ? h[f] : null)) as unknown as TData;
     if (!h || fields.every((f) => !(f in h))) return null;
-    return Object.fromEntries(fields.map((f) => [f, f in h ? this.de(h[f]) : null])) as TData;
+    return Object.fromEntries(fields.map((f) => [f, f in h ? deserializePlain(h[f], this.auto) : null])) as TData;
   }
 
   async hgetdel<TData extends Record<string, unknown>>(key: string, ...fields: (string | number)[]): Promise<TData | null> {
     const names = fields.map(String);
-    const taken = await this.update<Record<string, string>, Record<string, string> | null>(key, "h", (cur) => {
-      if (!cur) return { result: null };
-      const hit = names.filter((f) => f in cur);
-      if (hit.length === 0) return { result: null };
-      const rest = Object.fromEntries(Object.entries(cur).filter(([f]) => !names.includes(f)));
-      return { next: rest, result: Object.fromEntries(names.map((f) => [f, cur[f] as string])) };
+    const taken = await this.update<Record<string, string>, Array<string | null> | null>(key, "h", (cur) => {
+      if (!cur || !names.some((f) => f in cur)) return { result: null };
+      const rest = { ...cur };
+      const values = names.map((f) => {
+        const value = f in rest ? (rest[f] as string) : null;
+        delete rest[f];
+        return value;
+      });
+      return { next: rest, result: values };
     });
+    if (!this.auto) return (taken ?? names.map(() => null)) as unknown as TData;
     if (!taken) return null;
-    return Object.fromEntries(Object.entries(taken).map(([f, v]) => [f, this.de(v)])) as TData;
+    return Object.fromEntries(names.map((f, i) => [f, deserializePlain(taken[i], this.auto)])) as TData;
   }
 
   async hdel(key: string, ...fields: string[]): Promise<0 | 1> {
     return this.update<Record<string, string>, number>(key, "h", (cur) => {
       if (!cur) return { result: 0 };
-      const removed = fields.filter((f) => f in cur);
+      const targets = new Set(fields);
+      const removed = [...targets].filter((f) => f in cur);
       if (removed.length === 0) return { result: 0 };
-      return { next: Object.fromEntries(Object.entries(cur).filter(([f]) => !fields.includes(f))), result: removed.length };
+      return { next: Object.fromEntries(Object.entries(cur).filter(([f]) => !targets.has(f))), result: removed.length };
     }) as Promise<0 | 1>;
   }
 
   hincrby(key: string, field: string, increment: number): Promise<number> {
     return this.update<Record<string, string>, number>(key, "h", (cur) => {
       const existing = cur ?? {};
-      const next = (field in existing ? asInteger(existing[field]) : 0) + increment;
+      const next = (field in existing ? asInteger(existing[field], HASH_INTEGER) : 0) + increment;
       if (!Number.isSafeInteger(next)) throw new UpstashError("ERR", "increment or decrement would overflow");
       return { next: { ...existing, [field]: String(next) }, result: next };
     });
   }
 
-  hincrbyfloat(key: string, field: string, increment: number): Promise<number> {
-    return this.update<Record<string, string>, number>(key, "h", (cur) => {
+  async hincrbyfloat(key: string, field: string, increment: number): Promise<number> {
+    return this.floatReply(await this.update<Record<string, string>, number>(key, "h", (cur) => {
       const existing = cur ?? {};
-      const next = (field in existing ? asFloat(existing[field]) : 0) + increment;
+      const next = (field in existing ? asFloat(existing[field], HASH_FLOAT) : 0) + increment;
       if (!Number.isFinite(next)) throw new UpstashError("ERR", "increment would produce NaN or Infinity");
       return { next: { ...existing, [field]: String(next) }, result: next };
-    });
+    }));
   }
 
   async hexists(key: string, field: string): Promise<number> {
@@ -602,7 +652,8 @@ export class Redis {
           ? []
           : Array.from({ length: -count }, () => fields[Math.floor(Math.random() * fields.length)] as string);
     if (!withValues) return picked;
-    return Object.fromEntries(picked.map((f) => [f, this.de(h[f])]));
+    if (!this.auto) return picked.flatMap((f) => [f, h[f] as string]);
+    return Object.fromEntries(picked.map((f) => [f, deserializePlain(h[f], this.auto)]));
   }
 
   private scanSlice<T>(items: T[], cursor: string | number, opts?: ScanCommandOptions): [T[], string] {
@@ -735,9 +786,13 @@ export class Redis {
     whereFrom: "left" | "right",
     whereTo: "left" | "right",
   ): Promise<TData> {
-    const moved = await this.pop<string>(source, undefined, whereFrom);
-    if (moved === null) return null as TData;
-    const raw = serialize(moved);
+    const raw = await this.update<string[], string | null>(source, "l", (cur) => {
+      if (!cur) return { result: null };
+      return whereFrom === "left"
+        ? { next: cur.slice(1), result: cur[0] as string }
+        : { next: cur.slice(0, -1), result: cur[cur.length - 1] as string };
+    });
+    if (raw === null) return null as TData;
     await this.update<string[], null>(destination, "l", (cur) => ({
       next: whereTo === "left" ? [raw, ...(cur ?? [])] : [...(cur ?? []), raw],
       result: null,
@@ -897,14 +952,14 @@ export class Redis {
     });
   }
 
-  private async zload(key: string): Promise<ZEntry[]> {
+  private async zload(key: string, acceptSets = false): Promise<ZEntry[]> {
     const rec = (await this.store.read(key)).rec;
-    if (rec && rec.t === "S") return (rec.v as string[]).map((m): ZEntry => [m, 1]);
+    if (acceptSets && rec && rec.t === "S") return (rec.v as string[]).map((m): ZEntry => [m, 1]);
     return checkKind<ZEntry[]>(rec, "z") ?? [];
   }
 
   private flatten(entries: ZEntry[], withScores: boolean): unknown[] {
-    return withScores ? entries.flatMap(([m, s]) => [this.de(m), s]) : entries.map(([m]) => this.de(m));
+    return withScores ? entries.flatMap(([m, s]) => [this.de(m), this.auto ? s : String(s)]) : entries.map(([m]) => this.de(m));
   }
 
   async zadd<TData>(
@@ -961,23 +1016,26 @@ export class Redis {
 
   async zincrby<TData>(key: string, increment: number, member: TData): Promise<number> {
     const raw = serialize(member);
-    return this.updateZ<number>(key, (cur) => {
+    return this.floatReply(await this.updateZ<number>(key, (cur) => {
       const map = toMap(cur ?? []);
       const next = (map.get(raw) ?? 0) + increment;
       map.set(raw, next);
       return { next: [...map.entries()], result: next };
-    });
+    }));
   }
 
   async zscore<TData>(key: string, member: TData): Promise<number | null> {
-    return toMap(await this.zload(key)).get(serialize(member)) ?? null;
+    const score = toMap(await this.zload(key)).get(serialize(member));
+    if (score === undefined) return null;
+    return (this.auto ? score : String(score)) as number;
   }
 
   async zmscore<TData>(key: string, members: TData[]): Promise<number[] | null> {
-    const entries = await this.zload(key);
-    if (entries.length === 0) return null;
-    const map = toMap(entries);
-    return members.map((m) => map.get(serialize(m)) ?? null) as number[];
+    const map = toMap(await this.zload(key));
+    return members.map((m) => {
+      const score = map.get(serialize(m));
+      return score === undefined ? null : this.auto ? score : String(score);
+    }) as number[];
   }
 
   async zrank<TData>(key: string, member: TData): Promise<number | null> {
@@ -1093,8 +1151,11 @@ export class Redis {
     keys: string[],
     opts: { aggregate?: "sum" | "min" | "max"; weight?: number; weights?: number[] },
   ): Promise<ZEntry[]> {
+    const sources = await Promise.all(keys.map((k) => this.zload(k, true)));
+    if ((opts.weights !== undefined && opts.weights.length !== keys.length) || (opts.weight !== undefined && keys.length !== 1)) {
+      throw syntaxError();
+    }
     const weights = opts.weights ?? keys.map(() => opts.weight ?? 1);
-    const sources = await Promise.all(keys.map((k) => this.zload(k)));
     const aggregate = opts.aggregate ?? "sum";
     const totals = new Map<string, number>();
     const seen = new Map<string, number>();
@@ -1147,7 +1208,7 @@ export class Redis {
   }
 
   async zdiffstore(destination: string, numkeys: number, ...keys: string[]): Promise<number> {
-    const [first = [], ...others] = await Promise.all(keys.slice(0, numkeys).map((k) => this.zload(k)));
+    const [first = [], ...others] = await Promise.all(keys.slice(0, numkeys).map((k) => this.zload(k, true)));
     const exclude = new Set(others.flatMap((entries) => entries.map(([m]) => m)));
     return this.storeZ(destination, first.filter(([m]) => !exclude.has(m)));
   }
@@ -1156,7 +1217,7 @@ export class Redis {
     const entries = await this.zload(key);
     const re = opts?.match ? globToRegExp(opts.match) : null;
     const [slice, next] = this.scanSlice(entries, cursor, opts);
-    const flat = slice.filter(([m]) => !re || re.test(m)).flatMap(([m, s]) => [this.de<string | number>(m) as string | number, s]);
+    const flat = slice.filter(([m]) => !re || re.test(m)).flatMap(([m, s]) => [this.de<string | number>(m) as string | number, this.auto ? s : String(s)]);
     return [next, flat];
   }
 }
