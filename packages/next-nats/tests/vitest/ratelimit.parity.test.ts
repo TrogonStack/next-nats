@@ -1,11 +1,12 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 import { closeNats, connectNats, getNats } from "../../src/connection.js";
-import { createKv } from "../../src/kv/index.js";
+import { Ratelimit as UpstashRatelimit } from "@upstash/ratelimit";
+import { Redis } from "../../src/redis/index.js";
 import { Ratelimit, toMs } from "../../src/ratelimit/index.js";
 
 const run = Math.random().toString(36).slice(2, 8);
 const BUCKET = `rl_${run}`;
-const kv = createKv({ bucket: BUCKET });
+const redis = new Redis({ bucket: BUCKET });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 beforeAll(async () => {
@@ -29,7 +30,7 @@ describe("durations", () => {
 
 describe("fixed window", () => {
   it("allows exactly N per window then resets", async () => {
-    const rl = new Ratelimit({ kv, limiter: Ratelimit.fixedWindow(3, "1 s"), prefix: "fw" });
+    const rl = new Ratelimit({ redis, limiter: Ratelimit.fixedWindow(3, "1 s"), prefix: "fw" });
     const results = [];
     for (let i = 0; i < 5; i++) results.push(await rl.limit("u1"));
     const ok = results.filter((r) => r.success).length;
@@ -42,14 +43,14 @@ describe("fixed window", () => {
   });
 
   it("is isolated per identifier and supports rate", async () => {
-    const rl = new Ratelimit({ kv, limiter: Ratelimit.fixedWindow(10, "1 h"), prefix: "fw2" });
+    const rl = new Ratelimit({ redis, limiter: Ratelimit.fixedWindow(10, "1 h"), prefix: "fw2" });
     expect((await rl.limit("a", { rate: 7 })).remaining).toBe(3);
     expect((await rl.limit("a", { rate: 7 })).success).toBe(false);
     expect((await rl.limit("b", { rate: 7 })).success).toBe(true);
   });
 
   it("is exact under concurrency", async () => {
-    const rl = new Ratelimit({ kv, limiter: Ratelimit.fixedWindow(10, "1 h"), prefix: "fw3" });
+    const rl = new Ratelimit({ redis, limiter: Ratelimit.fixedWindow(10, "1 h"), prefix: "fw3" });
     const res = await Promise.all(Array.from({ length: 30 }, () => rl.limit("c")));
     expect(res.filter((r) => r.success)).toHaveLength(10);
   });
@@ -57,14 +58,14 @@ describe("fixed window", () => {
 
 describe("sliding window", () => {
   it("is exact under concurrency", async () => {
-    const rl = new Ratelimit({ kv, limiter: Ratelimit.slidingWindow(8, "1 h"), prefix: "sw" });
+    const rl = new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(8, "1 h"), prefix: "sw" });
     const res = await Promise.all(Array.from({ length: 25 }, () => rl.limit("c")));
     expect(res.filter((r) => r.success)).toHaveLength(8);
     expect(res.every((r) => r.reset > Date.now())).toBe(true);
   });
 
   it("decays the previous window smoothly", async () => {
-    const rl = new Ratelimit({ kv, limiter: Ratelimit.slidingWindow(4, "1 s"), prefix: "sw2" });
+    const rl = new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(4, "1 s"), prefix: "sw2" });
     await sleep(1000 - (Date.now() % 1000) + 5);
     for (let i = 0; i < 4; i++) await rl.limit("d");
     expect((await rl.limit("d")).success).toBe(false);
@@ -74,7 +75,7 @@ describe("sliding window", () => {
   });
 
   it("resets used tokens and peeks without consuming", async () => {
-    const rl = new Ratelimit({ kv, limiter: Ratelimit.slidingWindow(2, "1 h"), prefix: "sw3" });
+    const rl = new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(2, "1 h"), prefix: "sw3" });
     await rl.limit("e");
     expect((await rl.getRemaining("e")).remaining).toBe(1);
     expect((await rl.getRemaining("e")).remaining).toBe(1);
@@ -85,7 +86,7 @@ describe("sliding window", () => {
 
 describe("token bucket", () => {
   it("drains and refills", async () => {
-    const rl = new Ratelimit({ kv, limiter: Ratelimit.tokenBucket(2, "500 ms", 4), prefix: "tb" });
+    const rl = new Ratelimit({ redis, limiter: Ratelimit.tokenBucket(2, "500 ms", 4), prefix: "tb" });
     const first = [];
     for (let i = 0; i < 5; i++) first.push((await rl.limit("t")).success);
     expect(first).toEqual([true, true, true, true, false]);
@@ -96,17 +97,81 @@ describe("token bucket", () => {
   });
 
   it("is exact under concurrency", async () => {
-    const rl = new Ratelimit({ kv, limiter: Ratelimit.tokenBucket(1, "1 h", 6), prefix: "tb2" });
+    const rl = new Ratelimit({ redis, limiter: Ratelimit.tokenBucket(1, "1 h", 6), prefix: "tb2" });
     const res = await Promise.all(Array.from({ length: 20 }, () => rl.limit("c")));
     expect(res.filter((r) => r.success)).toHaveLength(6);
   });
 
   it("blockUntilReady waits for a refill", async () => {
-    const rl = new Ratelimit({ kv, limiter: Ratelimit.tokenBucket(1, "300 ms", 1), prefix: "tb3" });
+    const rl = new Ratelimit({ redis, limiter: Ratelimit.tokenBucket(1, "300 ms", 1), prefix: "tb3" });
     await rl.limit("w");
     const started = Date.now();
     const res = await rl.blockUntilReady("w", 2000);
     expect(res.success).toBe(true);
     expect(Date.now() - started).toBeGreaterThanOrEqual(200);
+  });
+});
+
+describe("type parity with @upstash/ratelimit", () => {
+  type Ours = Ratelimit;
+  type Theirs = UpstashRatelimit;
+
+  it("matches instance signatures", () => {
+    expectTypeOf<Ours["limit"]>().parameters.toEqualTypeOf<Parameters<Theirs["limit"]>>();
+    expectTypeOf<Awaited<ReturnType<Ours["limit"]>>>().toEqualTypeOf<Awaited<ReturnType<Theirs["limit"]>>>();
+    expectTypeOf<Ours["blockUntilReady"]>().parameters.toEqualTypeOf<Parameters<Theirs["blockUntilReady"]>>();
+    expectTypeOf<Ours["resetUsedTokens"]>().parameters.toEqualTypeOf<Parameters<Theirs["resetUsedTokens"]>>();
+    expectTypeOf<Ours["getRemaining"]>().parameters.toEqualTypeOf<Parameters<Theirs["getRemaining"]>>();
+    expectTypeOf<Ours["setDynamicLimit"]>().parameters.toEqualTypeOf<Parameters<Theirs["setDynamicLimit"]>>();
+  });
+
+  it("matches static factory parameters", () => {
+    expectTypeOf(Ratelimit.fixedWindow).parameters.toEqualTypeOf<Parameters<typeof UpstashRatelimit.fixedWindow>>();
+    expectTypeOf(Ratelimit.slidingWindow).parameters.toEqualTypeOf<Parameters<typeof UpstashRatelimit.slidingWindow>>();
+    expectTypeOf(Ratelimit.tokenBucket).parameters.toEqualTypeOf<Parameters<typeof UpstashRatelimit.tokenBucket>>();
+    expectTypeOf(Ratelimit.cachedFixedWindow).parameters.toEqualTypeOf<Parameters<typeof UpstashRatelimit.cachedFixedWindow>>();
+  });
+});
+
+describe("options", () => {
+  it("uses the default prefix and cachedFixedWindow", async () => {
+    const rl = new Ratelimit({ redis, limiter: Ratelimit.cachedFixedWindow(2, "1 h") });
+    expect((await rl.limit("cf")).success).toBe(true);
+    expect((await rl.limit("cf")).success).toBe(true);
+    expect((await rl.limit("cf")).success).toBe(false);
+    expect((await rl.limit("cf")).success).toBe(false);
+    expect(await redis.keys("@upstash/ratelimit*")).not.toEqual([]);
+  });
+
+  it("works with the ephemeral cache disabled", async () => {
+    const rl = new Ratelimit({ redis, limiter: Ratelimit.fixedWindow(1, "1 h"), prefix: "nc", ephemeralCache: false });
+    expect((await rl.limit("x")).success).toBe(true);
+    expect((await rl.limit("x")).success).toBe(false);
+  });
+
+  it("honors dynamic limits", async () => {
+    const rl = new Ratelimit({ redis, limiter: Ratelimit.fixedWindow(10, "1 h"), prefix: "dl", dynamicLimits: true });
+    await rl.setDynamicLimit({ limit: 1 });
+    expect((await rl.getDynamicLimit()).dynamicLimit).toBe(1);
+    expect((await rl.limit("d")).success).toBe(true);
+    expect((await rl.limit("d")).success).toBe(false);
+    await rl.setDynamicLimit({ limit: false });
+    expect((await rl.getDynamicLimit()).dynamicLimit).toBeNull();
+  });
+
+  it("rejects non positive blockUntilReady timeouts and unsupported protection", async () => {
+    const rl = new Ratelimit({ redis, limiter: Ratelimit.fixedWindow(1, "1 h"), prefix: "bt" });
+    await expect(rl.blockUntilReady("x", 0)).rejects.toThrow("timeout must be positive");
+    expect(() => new Ratelimit({ redis, limiter: Ratelimit.fixedWindow(1, "1 h"), enableProtection: true })).toThrow();
+  });
+
+  it("records analytics", async () => {
+    const rl = new Ratelimit({ redis, limiter: Ratelimit.fixedWindow(1, "1 h"), prefix: "an", analytics: true });
+    const res = await rl.limit("u");
+    await res.pending;
+    const res2 = await rl.limit("u");
+    await res2.pending;
+    const usage = await redis.hgetall("an:analytics:usage");
+    expect(Object.keys(usage ?? {}).length).toBeGreaterThan(0);
   });
 });

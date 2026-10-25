@@ -1,191 +1,192 @@
 import "server-only";
-import { kv as defaultKv, type NatsKv } from "../kv/index.js";
-import type { KvRecord, KvStore } from "../kv/store.js";
-import { invalidArgument } from "../errors.js";
+import { UnsupportedCommandError } from "../redis/errors.js";
+import type { Redis } from "../redis/redis.js";
+import { Analytics } from "./analytics.js";
+import type { Geo } from "./analytics.js";
+import {
+  Cache,
+  cachedFixedWindow,
+  dynamicLimitKey,
+  fixedWindow,
+  slidingWindow,
+  tokenBucket,
+  toMs,
+} from "./algorithms.js";
+import type { Algorithm, Duration, MultiRegionContext, RatelimitResponse, RegionContext } from "./algorithms.js";
 
-export type Unit = "ms" | "s" | "m" | "h" | "d";
-export type Duration = `${number} ${Unit}` | `${number}${Unit}`;
+export { Analytics } from "./analytics.js";
+export type { AnalyticsConfig, Geo } from "./analytics.js";
+export type {
+  Algorithm,
+  DeniedValue,
+  Duration,
+  EphemeralCache,
+  RatelimitResponse,
+  RatelimitResponseType,
+  Unit,
+} from "./algorithms.js";
+export { toMs } from "./algorithms.js";
+export * as IpDenyList from "./deny-list.js";
 
-export interface RatelimitResponse {
-  success: boolean;
-  limit: number;
-  remaining: number;
-  reset: number;
-  pending: Promise<unknown>;
-}
+export type LimitOptions = {
+  geo?: Geo;
+  rate?: number;
+  ip?: string;
+  userAgent?: string;
+  country?: string;
+};
 
-export interface RatelimitStatus {
-  remaining: number;
-  reset: number;
-  limit: number;
-}
-
-type Outcome = Omit<RatelimitResponse, "pending">;
-
-export interface Algorithm {
-  limit(store: KvStore, key: string, rate: number, now: number): Promise<Outcome>;
-  peek(store: KvStore, key: string, now: number): Promise<RatelimitStatus>;
-  readonly ttlMs: number;
-}
-
-export function toMs(duration: Duration): number {
-  const match = /^(\d+(?:\.\d+)?)\s?(ms|s|m|h|d)$/.exec(duration);
-  if (!match) throw invalidArgument("next-nats.ratelimit", "INVALID_DURATION", `Invalid duration "${duration}"`);
-  const unit = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[match[2] as Unit];
-  return Number(match[1]) * unit;
-}
-
-interface Windows {
-  w: number;
-  cur: number;
-  prev: number;
-}
-
-function roll(state: Windows | undefined, idx: number): Windows {
-  if (!state) return { w: idx, cur: 0, prev: 0 };
-  if (state.w === idx) return state;
-  if (state.w === idx - 1) return { w: idx, cur: 0, prev: state.cur };
-  return { w: idx, cur: 0, prev: 0 };
-}
-
-function asState<T>(rec: KvRecord | null): T | undefined {
-  return rec ? (rec.v as T) : undefined;
-}
-
-function fixedWindow(tokens: number, window: Duration): Algorithm {
-  const size = toMs(window);
-  return {
-    ttlMs: size * 2,
-    limit: (store, key, rate, now) => {
-      const idx = Math.floor(now / size);
-      const reset = (idx + 1) * size;
-      return store.mutate(key, (cur) => {
-        const state = roll(asState<Windows>(cur), idx);
-        const success = state.cur + rate <= tokens;
-        const next = success ? { ...state, cur: state.cur + rate } : state;
-        return {
-          next: success ? { t: "s", v: next, x: reset + size } : undefined,
-          result: { success, limit: tokens, remaining: Math.max(0, tokens - next.cur), reset },
-        };
-      });
-    },
-    peek: async (store, key, now) => {
-      const idx = Math.floor(now / size);
-      const state = roll(asState<Windows>((await store.read(key)).rec), idx);
-      return { limit: tokens, remaining: Math.max(0, tokens - state.cur), reset: (idx + 1) * size };
-    },
-  };
-}
-
-function slidingWindow(tokens: number, window: Duration): Algorithm {
-  const size = toMs(window);
-  const used = (state: Windows, now: number, idx: number) =>
-    Math.floor(state.prev * (1 - (now - idx * size) / size)) + state.cur;
-  return {
-    ttlMs: size * 2,
-    limit: (store, key, rate, now) => {
-      const idx = Math.floor(now / size);
-      const reset = (idx + 1) * size;
-      return store.mutate(key, (cur) => {
-        const state = roll(asState<Windows>(cur), idx);
-        const weighted = used(state, now, idx);
-        const success = weighted + rate <= tokens;
-        return {
-          next: success ? { t: "s", v: { ...state, cur: state.cur + rate }, x: reset + size } : undefined,
-          result: { success, limit: tokens, remaining: Math.max(0, tokens - weighted - (success ? rate : 0)), reset },
-        };
-      });
-    },
-    peek: async (store, key, now) => {
-      const idx = Math.floor(now / size);
-      const state = roll(asState<Windows>((await store.read(key)).rec), idx);
-      return { limit: tokens, remaining: Math.max(0, tokens - used(state, now, idx)), reset: (idx + 1) * size };
-    },
-  };
-}
-
-interface Bucket {
-  tokens: number;
-  at: number;
-}
-
-function tokenBucket(refillRate: number, interval: Duration, maxTokens: number): Algorithm {
-  const size = toMs(interval);
-  const refill = (state: Bucket | undefined, now: number): Bucket => {
-    if (!state) return { tokens: maxTokens, at: now };
-    const intervals = Math.floor((now - state.at) / size);
-    if (intervals <= 0) return state;
-    const tokens = Math.min(maxTokens, state.tokens + intervals * refillRate);
-    return { tokens, at: tokens === maxTokens ? now : state.at + intervals * size };
-  };
-  const ttlMs = Math.ceil(maxTokens / refillRate) * size + size;
-  return {
-    ttlMs,
-    limit: (store, key, rate, now) =>
-      store.mutate(key, (cur) => {
-        const state = refill(asState<Bucket>(cur), now);
-        const success = state.tokens >= rate;
-        const next = success ? { ...state, tokens: state.tokens - rate } : state;
-        return {
-          next: { t: "s", v: next, x: now + ttlMs },
-          result: { success, limit: maxTokens, remaining: next.tokens, reset: next.at + size },
-        };
-      }),
-    peek: async (store, key, now) => {
-      const state = refill(asState<Bucket>((await store.read(key)).rec), now);
-      return { limit: maxTokens, remaining: state.tokens, reset: state.at + size };
-    },
-  };
-}
-
-export interface RatelimitConfig {
-  limiter: Algorithm;
-  kv?: NatsKv;
+export type RatelimitConfig = {
+  redis: Redis;
+  limiter: Algorithm<RegionContext>;
   prefix?: string;
-}
+  ephemeralCache?: Map<string, number> | false;
+  timeout?: number;
+  analytics?: boolean;
+  cacheScripts?: boolean;
+  enableProtection?: boolean;
+  denyListThreshold?: number;
+  dynamicLimits?: boolean;
+  enableTelemetry?: boolean;
+};
 
 export class Ratelimit {
-  private readonly limiter: Algorithm;
-  private readonly store: KvStore;
-  private readonly prefix: string;
+  protected readonly limiter: ReturnType<Algorithm<RegionContext>>;
+  protected readonly ctx: RegionContext;
+  protected readonly prefix: string;
+  protected readonly timeout: number;
+  protected readonly primaryRedis: Redis;
+  protected readonly analytics?: Analytics;
+  protected readonly dynamicLimits: boolean;
 
   constructor(config: RatelimitConfig) {
-    this.limiter = config.limiter;
-    this.store = (config.kv ?? defaultKv).store;
-    this.prefix = config.prefix ?? "ratelimit";
+    if (config.enableProtection) throw new UnsupportedCommandError("Ratelimit enableProtection");
+    this.prefix = config.prefix ?? "@upstash/ratelimit";
+    this.timeout = config.timeout ?? 5000;
+    this.primaryRedis = config.redis;
+    this.dynamicLimits = config.dynamicLimits ?? false;
+    this.limiter = config.limiter();
+    this.ctx = {
+      redis: config.redis,
+      prefix: this.prefix,
+      dynamicLimits: this.dynamicLimits,
+      ...(config.ephemeralCache !== false && { cache: new Cache(config.ephemeralCache ?? new Map<string, number>()) }),
+    };
+    if (config.analytics) this.analytics = new Analytics({ redis: config.redis, prefix: this.prefix });
   }
 
-  static fixedWindow = fixedWindow;
-  static slidingWindow = slidingWindow;
-  static tokenBucket = tokenBucket;
-
-  private key(identifier: string): string {
-    return `${this.prefix}:${identifier}`;
+  static fixedWindow(tokens: number, window: Duration): Algorithm<RegionContext> {
+    return fixedWindow(tokens, window);
   }
 
-  async limit(identifier: string, req?: { rate?: number }): Promise<RatelimitResponse> {
-    const outcome = await this.limiter.limit(this.store, this.key(identifier), req?.rate ?? 1, Date.now());
-    return { ...outcome, pending: Promise.resolve() };
+  static slidingWindow(tokens: number, window: Duration): Algorithm<RegionContext> {
+    return slidingWindow(tokens, window);
   }
 
-  async blockUntilReady(identifier: string, timeout: number): Promise<RatelimitResponse> {
-    if (timeout <= 0) throw invalidArgument("next-nats.ratelimit", "INVALID_TIMEOUT", "timeout must be positive");
+  static tokenBucket(refillRate: number, interval: Duration, maxTokens: number): Algorithm<RegionContext> {
+    return tokenBucket(refillRate, interval, maxTokens);
+  }
+
+  static cachedFixedWindow(tokens: number, window: Duration): Algorithm<RegionContext> {
+    return cachedFixedWindow(tokens, window);
+  }
+
+  limit = async (identifier: string, req?: LimitOptions): Promise<RatelimitResponse> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const attempts: Promise<RatelimitResponse>[] = [this.limiter.limit(this.ctx, identifier, req?.rate, { cache: this.ctx.cache })];
+      if (this.timeout > 0) {
+        attempts.push(
+          new Promise<RatelimitResponse>((resolve) => {
+            timer = setTimeout(
+              () => resolve({ success: true, limit: 0, remaining: 0, reset: 0, pending: Promise.resolve(), reason: "timeout" }),
+              this.timeout,
+            );
+          }),
+        );
+      }
+      const response = await Promise.race(attempts);
+      return this.submitAnalytics(response, identifier, req);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
+  blockUntilReady = async (identifier: string, timeout: number): Promise<RatelimitResponse> => {
+    if (timeout <= 0) throw new Error("timeout must be positive");
     const deadline = Date.now() + timeout;
-    let res = await this.limit(identifier);
-    while (!res.success) {
-      if (res.reset > deadline) return res;
-      await new Promise((r) => setTimeout(r, Math.max(1, Math.min(res.reset, deadline) - Date.now())));
+    let res: RatelimitResponse;
+    while (true) {
       res = await this.limit(identifier);
-      if (Date.now() > deadline) return res;
+      if (res.success) break;
+      if (res.reset === 0) throw new Error("This should not happen");
+      const wait = Math.min(res.reset, deadline) - Date.now();
+      await new Promise((resolve) => setTimeout(resolve, Math.max(0, wait)));
+      if (Date.now() > deadline) break;
     }
     return res;
-  }
+  };
 
-  getRemaining(identifier: string): Promise<RatelimitStatus> {
-    return this.limiter.peek(this.store, this.key(identifier), Date.now());
-  }
+  resetUsedTokens = async (identifier: string): Promise<void> => {
+    await this.limiter.resetTokens(this.ctx, identifier);
+  };
 
-  async resetUsedTokens(identifier: string): Promise<void> {
-    await this.store.mutate(this.key(identifier), (cur) => ({ next: cur ? null : undefined, result: undefined }));
+  getRemaining = (identifier: string): Promise<{ remaining: number; reset: number; limit: number }> =>
+    this.limiter.getRemaining(this.ctx, identifier);
+
+  setDynamicLimit = async (options: { limit: number | false }): Promise<void> => {
+    if (!this.dynamicLimits) {
+      throw new Error("dynamicLimits must be enabled in the Ratelimit constructor to use setDynamicLimit");
+    }
+    const key = dynamicLimitKey(this.prefix);
+    if (options.limit === false) await this.primaryRedis.del(key);
+    else await this.primaryRedis.set(key, options.limit);
+  };
+
+  getDynamicLimit = async (): Promise<{ dynamicLimit: number | null }> => {
+    if (!this.dynamicLimits) {
+      throw new Error("dynamicLimits must be enabled in the Ratelimit constructor to use getDynamicLimit");
+    }
+    return { dynamicLimit: await this.primaryRedis.get<number>(dynamicLimitKey(this.prefix)) };
+  };
+
+  private submitAnalytics(response: RatelimitResponse, identifier: string, req?: LimitOptions): RatelimitResponse {
+    if (!this.analytics || response.reason === "timeout") return response;
+    const recorded = this.analytics.record({
+      identifier,
+      time: Date.now(),
+      success: response.success,
+      ...(req?.geo ?? {}),
+      ...(req?.ip !== undefined && { ip: req.ip }),
+      ...(req?.country !== undefined && { country: req.country }),
+    });
+    return { ...response, pending: Promise.all([response.pending, recorded]) };
   }
 }
+
+export type MultiRegionRatelimitConfig = {
+  redis: Redis[];
+  limiter: Algorithm<MultiRegionContext>;
+  prefix?: string;
+  ephemeralCache?: Map<string, number> | false;
+  timeout?: number;
+  analytics?: boolean;
+  cacheScripts?: boolean;
+  dynamicLimits?: boolean;
+  enableTelemetry?: boolean;
+};
+
+export class MultiRegionRatelimit {
+  constructor(_config: MultiRegionRatelimitConfig) {
+    throw new UnsupportedCommandError("MultiRegionRatelimit");
+  }
+
+  static fixedWindow(_tokens: number, _window: Duration): Algorithm<MultiRegionContext> {
+    throw new UnsupportedCommandError("MultiRegionRatelimit.fixedWindow");
+  }
+
+  static slidingWindow(_tokens: number, _window: Duration): Algorithm<MultiRegionContext> {
+    throw new UnsupportedCommandError("MultiRegionRatelimit.slidingWindow");
+  }
+}
+
