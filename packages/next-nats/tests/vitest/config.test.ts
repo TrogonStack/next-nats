@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { authFromEnv, decodeCreds, parseServers, resolveConfig } from "../../src/config.js";
+import { Secret } from "../../src/secret.js";
 import { bucketName, subject } from "../../src/values.js";
 
 describe("config", () => {
@@ -30,11 +31,11 @@ describe("config", () => {
   });
 
   it("auth priority", () => {
-    expect(authFromEnv({ NATS_TOKEN: "t", NATS_USER: "u" })).toEqual({ kind: "token", token: "t" });
-    expect(authFromEnv({ NATS_USER: "u", NATS_PASS: "p" })).toEqual({ kind: "userpass", user: "u", pass: "p" });
-    expect(authFromEnv({ NATS_NKEY_SEED: "SU" , NATS_TOKEN: "t" })).toEqual({ kind: "nkey", seed: "SU" });
+    expect(authFromEnv({ NATS_TOKEN: "t", NATS_USER: "u" })).toEqual({ kind: "token", token: Secret.of("t") });
+    expect(authFromEnv({ NATS_USER: "u", NATS_PASS: "p" })).toEqual({ kind: "userpass", user: "u", pass: Secret.of("p") });
+    expect(authFromEnv({ NATS_NKEY_SEED: "SU" , NATS_TOKEN: "t" })).toEqual({ kind: "nkey", seed: Secret.of("SU") });
     expect(authFromEnv({ NATS_CREDS_FILE: "/c", NATS_TOKEN: "t" })).toEqual({ kind: "credsFile", path: "/c" });
-    expect(authFromEnv({ NATS_CREDS: "c", NATS_CREDS_FILE: "/c" })).toEqual({ kind: "creds", creds: "c" });
+    expect(authFromEnv({ NATS_CREDS: "c", NATS_CREDS_FILE: "/c" })).toEqual({ kind: "creds", creds: Secret.of("c") });
   });
 
   it("decodes raw and base64 creds, rejects junk", () => {

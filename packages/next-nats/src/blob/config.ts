@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { secretFromEnv } from "../secret.js";
 
 export interface BlobConfig {
   bucket: string;
@@ -14,7 +15,7 @@ function fromEnv(): BlobConfig {
   return {
     bucket: process.env.NEXT_NATS_BLOB_BUCKET ?? "next_nats_blob",
     baseUrl: process.env.BLOB_BASE_URL ?? "/blob",
-    secret: process.env.BLOB_SECRET ?? randomBytes(32).toString("hex"),
+    secret: secretFromEnv(process.env.BLOB_SECRET)?.reveal() ?? randomBytes(32).toString("hex"),
   };
 }
 
