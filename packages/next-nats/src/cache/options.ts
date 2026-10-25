@@ -1,3 +1,4 @@
+import { invalidArgument } from "../errors.js";
 export interface CacheOptions {
   namespace?: string;
   ttl?: number;
@@ -31,7 +32,7 @@ function num(env: Env, key: string): number | undefined {
   const raw = env[key];
   if (raw === undefined || raw === "") return undefined;
   const value = Number(raw);
-  if (!Number.isFinite(value) || value < 0) throw new TypeError(`${key} must be a non-negative number, got "${raw}"`);
+  if (!Number.isFinite(value) || value < 0) throw invalidArgument("next-nats.cache", "INVALID_NUMBER", `${key} must be a non-negative number, got "${raw}"`);
   return value;
 }
 

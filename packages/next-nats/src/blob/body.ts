@@ -1,5 +1,6 @@
 import { Readable } from "node:stream";
 import { BlobFileTooLargeError } from "./errors.js";
+import { invalidArgument } from "../errors.js";
 
 export type PutBody = string | Readable | Buffer | Blob | ArrayBuffer | ArrayBufferView | ReadableStream;
 
@@ -10,7 +11,7 @@ export function toStream(body: PutBody): ReadableStream<Uint8Array> {
   if (typeof Blob !== "undefined" && body instanceof Blob) return body.stream() as ReadableStream<Uint8Array>;
   if (body instanceof ArrayBuffer) return once(new Uint8Array(body));
   if (ArrayBuffer.isView(body)) return once(new Uint8Array(body.buffer, body.byteOffset, body.byteLength));
-  throw new TypeError("Unsupported blob body type");
+  throw invalidArgument("next-nats.blob", "UNSUPPORTED_BODY", "Unsupported blob body type");
 }
 
 function once(bytes: Uint8Array): ReadableStream<Uint8Array> {

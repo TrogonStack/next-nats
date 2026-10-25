@@ -1,3 +1,4 @@
+import { invalidArgument } from "../errors.js";
 declare const brand: unique symbol;
 
 export type KvKey = string & { readonly [brand]: "KvKey" };
@@ -11,7 +12,7 @@ function hex(byte: number): string {
 }
 
 export function encodeKey(key: string): KvKey {
-  if (key.length === 0) throw new TypeError("KV key must not be empty");
+  if (key.length === 0) throw invalidArgument("next-nats.kv", "EMPTY_KEY", "KV key must not be empty");
   const chars = Array.from(key);
   let out = "";
   chars.forEach((ch, i) => {

@@ -1,6 +1,7 @@
 import "server-only";
 import { kv as defaultKv, type NatsKv } from "../kv/index.js";
 import type { KvRecord, KvStore } from "../kv/store.js";
+import { invalidArgument } from "../errors.js";
 
 export type Unit = "ms" | "s" | "m" | "h" | "d";
 export type Duration = `${number} ${Unit}` | `${number}${Unit}`;
@@ -29,7 +30,7 @@ export interface Algorithm {
 
 export function toMs(duration: Duration): number {
   const match = /^(\d+(?:\.\d+)?)\s?(ms|s|m|h|d)$/.exec(duration);
-  if (!match) throw new TypeError(`Invalid duration "${duration}"`);
+  if (!match) throw invalidArgument("next-nats.ratelimit", "INVALID_DURATION", `Invalid duration "${duration}"`);
   const unit = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[match[2] as Unit];
   return Number(match[1]) * unit;
 }
@@ -168,7 +169,7 @@ export class Ratelimit {
   }
 
   async blockUntilReady(identifier: string, timeout: number): Promise<RatelimitResponse> {
-    if (timeout <= 0) throw new Error("timeout must be positive");
+    if (timeout <= 0) throw invalidArgument("next-nats.ratelimit", "INVALID_TIMEOUT", "timeout must be positive");
     const deadline = Date.now() + timeout;
     let res = await this.limit(identifier);
     while (!res.success) {

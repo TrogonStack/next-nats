@@ -6,6 +6,7 @@ import type { IncrementalCacheValue } from "next/dist/server/response-cache/type
 import type { CacheControl } from "next/dist/server/lib/cache-control.js";
 import { getBackend, type BackendOptions, type CacheBackend } from "./backend.js";
 import { pack, unpack } from "./pack.js";
+import { warnThrottled } from "../logger.js";
 
 export interface IncrementalMeta {
   lastModified: number;
@@ -68,7 +69,7 @@ export class NatsIncrementalCacheHandler {
         ...(meta.cacheControl && { cacheControl: meta.cacheControl }),
       };
     } catch (err) {
-      console.warn("next-nats incremental cache get failed", key, err);
+      warnThrottled("incremental.get", "incremental cache get failed, serving a miss", { key, error: err });
       return null;
     }
   }
@@ -92,7 +93,7 @@ export class NatsIncrementalCacheHandler {
       };
       await entries.set(key, meta, pack(ctx.fetchCache && data.kind === "FETCH" ? { ...data, tags } : data));
     } catch (err) {
-      console.warn("next-nats incremental cache set failed", key, err);
+      warnThrottled("incremental.set", "incremental cache set failed, entry not stored", { key, error: err });
     }
   }
 

@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { closeNats, connectNats, getNats } from "../../src/connection.js";
 import { corePublish, jsPublish } from "../../src/publish.js";
 import { ensureStream } from "../../src/streams.js";
-import { formatSseEvent } from "../../src/realtime/sse.js";
+import { createSseResponse, formatSseEvent } from "../../src/realtime/sse.js";
+import { consoleLogger, setLogger, silentLogger } from "../../src/logger.js";
 import { sseFromStream, sseFromSubject } from "../../src/realtime/index.js";
 
 const run = Math.random().toString(36).slice(2, 8);
@@ -215,5 +216,25 @@ describe("sseFromSubject", () => {
     expect(events.map((e) => e.data)).toEqual(['{"hello":"a"}', "plain"]);
     ac.abort();
     await waitFor(async () => (await nc.rtt(), true));
+  });
+});
+
+describe("sink.fail", () => {
+  it("sends a generic nats-error and keeps the detail in the logger", async () => {
+    const logged: unknown[] = [];
+    setLogger({ ...silentLogger, error: (_message, context) => void logged.push(context?.error) });
+    try {
+      const res = createSseResponse(req(), { heartbeat: 0 }, (sink) => {
+        sink.fail(new Error("connect ECONNREFUSED 10.0.0.7:4222"));
+      });
+      const text = await res.text();
+      expect(text).toContain("event: nats-error");
+      expect(text).toContain("UNAVAILABLE");
+      expect(text).not.toContain("ECONNREFUSED");
+      expect(text).not.toContain("10.0.0.7");
+      expect(logged).toHaveLength(1);
+    } finally {
+      setLogger(consoleLogger());
+    }
   });
 });

@@ -1,3 +1,5 @@
+import { toSpecError } from "../errors.js";
+import { getLogger } from "../logger.js";
 import { codec } from "../codec.js";
 
 export interface SseEvent {
@@ -118,8 +120,9 @@ export function createSseResponse(
       return new Promise<void>((resolve) => waiters.push(resolve));
     },
     fail(error) {
-      const message = error instanceof Error ? error.message : String(error);
-      write(formatSseEvent({ event: "nats-error", data: { message } }));
+      const failure = toSpecError(error);
+      getLogger().error("realtime stream failed", { errorId: failure.spec.id, error });
+      write(formatSseEvent({ event: "nats-error", data: { code: "UNAVAILABLE", message: "The stream is unavailable", id: failure.spec.id } }));
       finish();
     },
     close: finish,

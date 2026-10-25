@@ -3,7 +3,7 @@ import type { ObjectInfo, ObjectStore } from "@nats-io/obj";
 import { getObjm } from "../connection.js";
 import { getBlobConfig } from "./config.js";
 import { limitSize, inferContentType, sliceStream, toStream, type PutBody } from "./body.js";
-import { BlobError, BlobNotFoundError, BlobPreconditionFailedError } from "./errors.js";
+import { BlobAlreadyExistsError, BlobError, BlobNotFoundError, BlobPreconditionFailedError } from "./errors.js";
 
 export type BlobAccessType = "public" | "private";
 
@@ -197,16 +197,16 @@ function withSuffix(pathname: string): string {
 }
 
 function assertPathname(pathname: string): void {
-  if (!pathname || pathname.length > 1024) throw new BlobError("pathname is required and must be 1024 characters or fewer");
-  if (pathname.endsWith("/")) throw new BlobError("pathname cannot end with a slash");
+  if (!pathname || pathname.length > 1024) throw new BlobError("pathname is required and must be 1024 characters or fewer", { reason: "INVALID_PATHNAME", subject: "/pathname" });
+  if (pathname.endsWith("/")) throw new BlobError("pathname cannot end with a slash", { reason: "INVALID_PATHNAME", subject: "/pathname" });
 }
 
 export async function put(pathname: string, body: PutBody | null, options: PutCommandOptions): Promise<PutBlobResult> {
   assertPathname(pathname);
   if (!options || (options.access !== "public" && options.access !== "private")) {
-    throw new BlobError('access must be "public" or "private"');
+    throw new BlobError('access must be "public" or "private"', { reason: "INVALID_ACCESS", subject: "/access" });
   }
-  if (body === null || body === undefined) throw new BlobError("body is required");
+  if (body === null || body === undefined) throw new BlobError("body is required", { reason: "BODY_REQUIRED", subject: "/body" });
   const store = await getBlobStore();
   const name = options.addRandomSuffix ? withSuffix(pathname) : pathname;
   const existing = await store.info(name);
@@ -215,7 +215,7 @@ export async function put(pathname: string, body: PutBody | null, options: PutCo
   if (options.ifMatch !== undefined) {
     if (!live || etagOf(live) !== options.ifMatch) throw new BlobPreconditionFailedError();
   } else if (live && !options.allowOverwrite) {
-    throw new BlobError("This blob already exists, use `allowOverwrite: true` to overwrite it");
+    throw new BlobAlreadyExistsError();
   }
 
   const contentType =
@@ -249,7 +249,7 @@ export async function put(pathname: string, body: PutBody | null, options: PutCo
 
   const info = await store.put({ name, metadata }, stream, { previousRevision: options.ifMatch !== undefined || !options.allowOverwrite ? (existing?.revision ?? 0) : undefined }).catch((err: unknown) => {
     if (err instanceof Error && /wrong last sequence/i.test(err.message)) {
-      throw new BlobError("This blob already exists, use `allowOverwrite: true` to overwrite it");
+      throw new BlobAlreadyExistsError();
     }
     throw err;
   });

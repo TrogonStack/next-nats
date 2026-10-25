@@ -6,6 +6,7 @@ import { codec } from "../codec.js";
 import { getNats, getNatsConfig, onNatsShutdown } from "../connection.js";
 import { ensureStream } from "../streams.js";
 import { recordCronRun } from "./runs.js";
+import { Code, invalidArgument, SpecError } from "../errors.js";
 
 const NANOS_PER_MS = 1_000_000;
 const NAME = /^[A-Za-z0-9_-]+$/;
@@ -112,7 +113,7 @@ export function createCronRuntime(options: CronRuntimeOptions = {}): CronRuntime
   };
 
   const defineCron = (def: CronDefinition): CronJob => {
-    if (!NAME.test(def.name)) throw new TypeError(`Invalid cron name "${def.name}": use letters, digits, "-" and "_"`);
+    if (!NAME.test(def.name)) throw invalidArgument("next-nats.cron", "INVALID_NAME", `Invalid cron name "${def.name}": use letters, digits, "-" and "_"`);
     validateSchedule(def.schedule, def.timezone);
     const existing = jobs.get(def.name);
     if (existing) return existing;
@@ -180,7 +181,7 @@ export function createCronRuntime(options: CronRuntimeOptions = {}): CronRuntime
       try {
         await Promise.race([
           def.handler(context),
-          new Promise<never>((_, reject) => context.signal.addEventListener("abort", () => reject(new Error(`cron "${def.name}" aborted or timed out`)), { once: true })),
+          new Promise<never>((_, reject) => context.signal.addEventListener("abort", () => reject(new SpecError({ code: Code.DEADLINE_EXCEEDED, domain: "next-nats.cron", reason: "ABORTED_OR_TIMED_OUT", message: `cron "${def.name}" aborted or timed out` })), { once: true })),
         ]);
         msg.ack();
         await save("success");

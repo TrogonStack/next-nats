@@ -14,6 +14,7 @@ import { Objm } from "@nats-io/obj";
 import { connect as tcpConnect, type NodeConnectionOptions } from "@nats-io/transport-node";
 import { decodeCreds, resolveConfig, type NatsAuth, type NatsConfig, type NatsConfigInput } from "./config.js";
 import { bucketName, type BucketName } from "./values.js";
+import { failedPrecondition } from "./errors.js";
 
 export interface Nats {
   nc: NatsConnection;
@@ -115,7 +116,7 @@ export function buildConnectionOptions(config: NatsConfig): NodeConnectionOption
 export function configureNats(input: NatsConfigInput = {}): NatsConfig {
   const s = store();
   if (s.current || s.pending) {
-    throw new Error("configureNats() must run before the first connection is opened");
+    throw failedPrecondition("next-nats.connection", "ALREADY_CONNECTED", "configureNats() must run before the first connection is opened");
   }
   s.config = resolveConfig(input);
   return s.config;
@@ -168,7 +169,7 @@ async function watchStatus(nc: NatsConnection): Promise<void> {
 export function connectNats(input?: NatsConfigInput): Promise<Nats> {
   const s = store();
   if (input) {
-    if (s.current || s.pending) throw new Error("connectNats(config) called after a connection was opened");
+    if (s.current || s.pending) throw failedPrecondition("next-nats.connection", "ALREADY_CONNECTED", "connectNats(config) called after a connection was opened");
     s.config = resolveConfig(input);
   }
   if (!s.pending) {

@@ -1,17 +1,20 @@
 import type { NatsConfigInput } from "./config.js";
+import { getLogger, setLogger, type Logger } from "./logger.js";
 
 export interface RegisterNatsOptions {
   config?: NatsConfigInput;
   setup?: () => unknown | Promise<unknown>;
   connectOnStart?: boolean;
   onError?: (error: unknown) => void;
+  logger?: Logger;
 }
 
 export async function registerNats(opts: RegisterNatsOptions = {}): Promise<void> {
   if (process.env.NEXT_RUNTIME && process.env.NEXT_RUNTIME !== "nodejs") return;
 
   const { configureNats, getNats, trackInitialization } = await import("./connection.js");
-  const onError = opts.onError ?? ((error) => console.error("[next-nats] startup failed:", error));
+  if (opts.logger) setLogger(opts.logger);
+  const onError = opts.onError ?? ((error) => getLogger().error("startup failed", { error }));
 
   await trackInitialization(async () => {
     if (opts.config) configureNats(opts.config);

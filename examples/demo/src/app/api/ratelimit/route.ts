@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { Ratelimit } from "next-nats/ratelimit";
+import { rateLimited } from "@/services/nats/http-errors";
 
 const limiter = new Ratelimit({ limiter: Ratelimit.slidingWindow(5, "10 s"), prefix: "demo:route" });
 
@@ -11,6 +12,6 @@ export async function GET(request: NextRequest) {
     "X-RateLimit-Remaining": String(remaining),
     "X-RateLimit-Reset": String(reset),
   };
-  if (!success) return NextResponse.json({ error: "Too Many Requests" }, { status: 429, headers });
+  if (!success) return rateLimited(headers);
   return NextResponse.json({ ok: true, remaining }, { headers });
 }

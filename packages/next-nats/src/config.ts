@@ -1,3 +1,4 @@
+import { invalidArgument } from "./errors.js";
 import { Secret, secretFromEnv } from "./secret.js";
 
 export type NatsTransport = "tcp" | "ws";
@@ -57,7 +58,7 @@ function int(env: Env, key: string): number | undefined {
   const value = env[key];
   if (value === undefined || value === "") return undefined;
   const n = Number(value);
-  if (!Number.isInteger(n)) throw new TypeError(`${key} must be an integer, got "${value}"`);
+  if (!Number.isInteger(n)) throw invalidArgument("next-nats.config", "INVALID_INTEGER", `${key} must be an integer, got "${value}"`);
   return n;
 }
 
@@ -112,7 +113,7 @@ export function tlsFromEnv(env: Env): NatsTlsConfig | undefined {
 export function resolveConfig(input: NatsConfigInput = {}, env: Env = process.env): NatsConfig {
   const transport = input.transport ?? ((env.NATS_TRANSPORT as NatsTransport | undefined) || "tcp");
   if (transport !== "tcp" && transport !== "ws") {
-    throw new TypeError(`NATS_TRANSPORT must be "tcp" or "ws", got "${transport}"`);
+    throw invalidArgument("next-nats.config", "INVALID_TRANSPORT", `NATS_TRANSPORT must be "tcp" or "ws", got "${transport}"`);
   }
   return {
     servers: parseServers(input.servers ?? env.NATS_SERVERS),
@@ -134,7 +135,7 @@ export function decodeCreds(value: string | Secret): Uint8Array {
   const trimmed = Secret.parse(value).reveal().trim();
   const text = trimmed.includes(CREDS_MARKER) ? trimmed : Buffer.from(trimmed, "base64").toString("utf8");
   if (!text.includes(CREDS_MARKER)) {
-    throw new TypeError("NATS_CREDS is not a creds file (raw or base64): missing a NATS USER JWT block");
+    throw invalidArgument("next-nats.config", "INVALID_CREDS", "NATS_CREDS is not a creds file (raw or base64): missing a NATS USER JWT block");
   }
   return new TextEncoder().encode(text);
 }

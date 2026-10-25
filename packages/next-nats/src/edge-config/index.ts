@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { JetStreamApiCodes, JetStreamApiError } from "@nats-io/jetstream";
 import type { KV, KvWatchEntry } from "@nats-io/kv";
 import { codec } from "../codec.js";
+import { Code, SpecError } from "../errors.js";
 import { onNatsShutdown, openKv } from "../connection.js";
 import { decodeKey, encodeKey } from "../kv/key.js";
 import { isConflict } from "../kv/store.js";
@@ -31,9 +32,15 @@ export type EdgeConfigItemOperation =
   | { operation: "create" | "update" | "upsert"; key: string; value: EdgeConfigValue }
   | { operation: "delete"; key: string };
 
-export class EdgeConfigError extends Error {
-  constructor(message: string) {
-    super(message);
+export class EdgeConfigError extends SpecError {
+  constructor(message: string, spec: { code?: Code; reason?: string } = {}) {
+    super({
+      code: Code.INVALID_ARGUMENT,
+      reason: "INVALID_OPERATION",
+      ...spec,
+      domain: "next-nats.edge-config",
+      message,
+    });
     this.name = "EdgeConfigError";
   }
 }
@@ -216,7 +223,7 @@ export async function setEdgeConfigItems(
     const key = encodeKey(item.key);
     if (item.operation === "delete") {
       const entry = await kv.get(key);
-      if (!entry || entry.operation !== "PUT") throw new EdgeConfigError(`Cannot delete missing item "${item.key}"`);
+      if (!entry || entry.operation !== "PUT") throw new EdgeConfigError(`Cannot delete missing item "${item.key}"`, { code: Code.NOT_FOUND, reason: "ITEM_NOT_FOUND" });
       await kv.delete(key);
       continue;
     }
@@ -230,18 +237,18 @@ export async function setEdgeConfigItems(
         await kv.create(key, data);
       } catch (err) {
         if (err instanceof JetStreamApiError && err.code === JetStreamApiCodes.StreamWrongLastSequence) {
-          throw new EdgeConfigError(`Item "${item.key}" already exists`);
+          throw new EdgeConfigError(`Item "${item.key}" already exists`, { code: Code.ALREADY_EXISTS, reason: "ITEM_EXISTS" });
         }
         throw err;
       }
       continue;
     }
     const entry = await kv.get(key);
-    if (!entry || entry.operation !== "PUT") throw new EdgeConfigError(`Cannot update missing item "${item.key}"`);
+    if (!entry || entry.operation !== "PUT") throw new EdgeConfigError(`Cannot update missing item "${item.key}"`, { code: Code.NOT_FOUND, reason: "ITEM_NOT_FOUND" });
     try {
       await kv.update(key, data, entry.revision);
     } catch (err) {
-      if (isConflict(err)) throw new EdgeConfigError(`Item "${item.key}" changed concurrently`);
+      if (isConflict(err)) throw new EdgeConfigError(`Item "${item.key}" changed concurrently`, { code: Code.ABORTED, reason: "CONCURRENT_UPDATE" });
       throw err;
     }
   }

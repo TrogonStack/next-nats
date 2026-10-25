@@ -1,3 +1,4 @@
+import { invalidArgument } from "./errors.js";
 declare const brand: unique symbol;
 
 export type Brand<T, B extends string> = T & { readonly [brand]: B };
@@ -13,14 +14,14 @@ const NAME = /^[A-Za-z0-9_-]+$/;
 export function subject(value: string): Subject {
   const tokens = value.split(".");
   if (value.length === 0 || !tokens.every((t) => SUBJECT_TOKEN.test(t))) {
-    throw new TypeError(`Invalid NATS subject "${value}"`);
+    throw invalidArgument("next-nats.values", "INVALID_SUBJECT", `Invalid NATS subject "${value}"`);
   }
   return value as Subject;
 }
 
 function name<B extends string>(kind: string, value: string): Brand<string, B> {
   if (!NAME.test(value)) {
-    throw new TypeError(`Invalid ${kind} "${value}": use letters, digits, "-" and "_"`);
+    throw invalidArgument("next-nats.values", "INVALID_NAME", `Invalid ${kind} "${value}": use letters, digits, "-" and "_"`);
   }
   return value as Brand<string, B>;
 }
