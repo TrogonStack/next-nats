@@ -65,6 +65,7 @@ describe("sliding window", () => {
 
   it("decays the previous window smoothly", async () => {
     const rl = new Ratelimit({ kv, limiter: Ratelimit.slidingWindow(4, "1 s"), prefix: "sw2" });
+    await sleep(1000 - (Date.now() % 1000) + 5);
     for (let i = 0; i < 4; i++) await rl.limit("d");
     expect((await rl.limit("d")).success).toBe(false);
     await sleep(2100);
