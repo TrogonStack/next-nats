@@ -4,7 +4,7 @@ import { getLogger } from "../logger.js";
 import { invalidArgument } from "../errors.js";
 import { loadVercelJsonText } from "../vercel-json.js";
 import { defaultCron } from "./default.js";
-import type { CronJob, CronRuntime } from "./runtime.js";
+import { validateSchedule, type CronJob, type CronRuntime } from "./runtime.js";
 
 export const VERCEL_CRON_USER_AGENT = "vercel-cron/1.0";
 
@@ -23,6 +23,26 @@ export interface VercelCronsOptions {
 }
 
 const DOMAIN = "next-nats.cron";
+const MAX_VERCEL_CRONS = 100;
+const NAMED_FIELD = /[A-Za-z]/;
+
+function assertVercelSchedule(schedule: unknown, index: number): asserts schedule is string {
+  const fields = typeof schedule === "string" ? schedule.trim().split(/\s+/) : [];
+  if (fields.length !== 5) {
+    throw invalidArgument(DOMAIN, "INVALID_VERCEL_CRON", `crons[${index}].schedule must be a five field cron expression`);
+  }
+  if (fields.some((field) => NAMED_FIELD.test(field))) {
+    throw invalidArgument(DOMAIN, "INVALID_VERCEL_CRON", `crons[${index}].schedule does not support names such as MON or JAN`);
+  }
+  if (fields[2] !== "*" && fields[4] !== "*") {
+    throw invalidArgument(DOMAIN, "INVALID_VERCEL_CRON", `crons[${index}].schedule cannot set both day of month and day of week`);
+  }
+  try {
+    validateSchedule(fields.join(" "), "UTC");
+  } catch (error) {
+    throw invalidArgument(DOMAIN, "INVALID_VERCEL_CRON", `crons[${index}].schedule is not a valid cron expression: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
 
 export function readVercelCrons(configPath?: string): VercelCron[] {
   const text = loadVercelJsonText(configPath);
@@ -36,14 +56,15 @@ export function readVercelCrons(configPath?: string): VercelCron[] {
   const crons = (config as { crons?: unknown } | null)?.crons;
   if (crons === undefined) return [];
   if (!Array.isArray(crons)) throw invalidArgument(DOMAIN, "INVALID_VERCEL_CONFIG", `"crons" in ${configPath ?? "vercel.json"} must be an array`);
+  if (crons.length > MAX_VERCEL_CRONS) {
+    throw invalidArgument(DOMAIN, "INVALID_VERCEL_CRON", `"crons" in ${configPath ?? "vercel.json"} cannot define more than ${MAX_VERCEL_CRONS} cron jobs`);
+  }
   return crons.map((entry, index) => {
     const { path, schedule } = (entry ?? {}) as Partial<VercelCron>;
     if (typeof path !== "string" || !path.startsWith("/")) {
       throw invalidArgument(DOMAIN, "INVALID_VERCEL_CRON", `crons[${index}].path must be a string starting with "/"`);
     }
-    if (typeof schedule !== "string" || schedule.trim().split(/\s+/).length !== 5) {
-      throw invalidArgument(DOMAIN, "INVALID_VERCEL_CRON", `crons[${index}].schedule must be a five field cron expression`);
-    }
+    assertVercelSchedule(schedule, index);
     return { path, schedule };
   });
 }
