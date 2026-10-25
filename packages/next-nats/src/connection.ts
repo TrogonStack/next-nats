@@ -178,6 +178,7 @@ export interface OpenKvOptions {
   create?: boolean;
   history?: number;
   ttl?: number;
+  markerTTL?: number;
   maxBytes?: number;
   replicas?: number;
   description?: string;
