@@ -2,35 +2,45 @@ import "server-only";
 import type { ObjectInfo, ObjectStore } from "@nats-io/obj";
 import { getObjm } from "../connection.js";
 import { getBlobConfig } from "./config.js";
-import { limitSize, inferContentType, sliceStream, toStream, type PutBody } from "./body.js";
-import { BlobAlreadyExistsError, BlobError, BlobNotFoundError, BlobPreconditionFailedError } from "./errors.js";
+import { chunked, concat, inferContentType, limitSize, toStream } from "./body.js";
+import {
+  BlobAlreadyExistsError,
+  BlobError,
+  BlobNotFoundError,
+  BlobPreconditionFailedError,
+  BlobRequestAbortedError,
+} from "./errors.js";
+import { blobDownloadUrl, blobUrl, resolvePathname } from "./url.js";
+import type {
+  BlobAccessType,
+  BlobCommandOptions,
+  CommonCreateBlobOptions,
+  CompleteMultipartUploadCommandOptions,
+  CreateFolderCommandOptions,
+  CreateFolderResult,
+  OptimizeImageOptions,
+  Part,
+  PutBlobResult,
+  PutBody,
+  UploadPartCommandOptions,
+  WithUploadProgress,
+} from "./types.js";
 
-export type BlobAccessType = "public" | "private";
+export { blobDownloadUrl, blobUrl, resolvePathname, getDownloadUrl } from "./url.js";
+export type { BlobAccessType, BlobCommandOptions, PutBlobResult } from "./types.js";
 
-export interface BlobCommandOptions {
-  token?: string;
-  abortSignal?: AbortSignal;
-}
+const MAXIMUM_PATHNAME_LENGTH = 950;
+const PART_SIZE = 8 * 1024 * 1024;
+const MAX_PARTS = 10_000;
+const UPLOAD_TTL_NANOS = 24 * 60 * 60 * 1_000_000_000;
 
-export interface PutCommandOptions extends BlobCommandOptions {
-  access: BlobAccessType;
-  addRandomSuffix?: boolean;
-  allowOverwrite?: boolean;
-  contentType?: string;
-  cacheControlMaxAge?: number;
-  ifMatch?: string;
-  maximumSizeInBytes?: number;
+export interface PutCommandOptions extends CommonCreateBlobOptions, WithUploadProgress {
   multipart?: boolean;
-  onUploadProgress?: (event: { loaded: number; total: number; percentage: number }) => void;
+  optimizeImage?: OptimizeImageOptions;
 }
 
-export interface PutBlobResult {
-  url: string;
-  downloadUrl: string;
-  pathname: string;
-  contentType: string;
-  contentDisposition: string;
-  etag: string;
+export interface DeleteCommandOptions extends BlobCommandOptions {
+  ifMatch?: string;
 }
 
 export interface HeadBlobResult {
@@ -76,12 +86,13 @@ export type ListCommandResult<M extends "expanded" | "folded" | undefined = unde
   : ListBlobResult;
 
 export interface GetCommandOptions extends BlobCommandOptions {
-  access?: BlobAccessType;
+  access: BlobAccessType;
+  useCache?: boolean;
   ifNoneMatch?: string;
-  range?: { start: number; end?: number };
+  headers?: HeadersInit;
 }
 
-export interface GetBlobResultBlob {
+interface GetBlobResultBlobBase {
   url: string;
   downloadUrl: string;
   pathname: string;
@@ -96,16 +107,28 @@ export type GetBlobResult =
       statusCode: 200;
       stream: ReadableStream<Uint8Array>;
       headers: Headers;
-      blob: GetBlobResultBlob & { contentType: string; size: number };
+      blob: GetBlobResultBlobBase & { contentType: string; size: number };
     }
   | {
       statusCode: 304;
       stream: null;
       headers: Headers;
-      blob: GetBlobResultBlob & { contentType: null; size: null };
+      blob: GetBlobResultBlobBase & { contentType: null; size: null };
     };
 
+export type CopyCommandOptions = CommonCreateBlobOptions;
 export interface CopyBlobResult extends PutBlobResult {}
+export type RenameCommandOptions = CommonCreateBlobOptions;
+export interface RenameBlobResult extends PutBlobResult {}
+
+export interface PutImageCommandOptions extends Omit<CommonCreateBlobOptions, "contentType">, WithUploadProgress {
+  optimizeImage: OptimizeImageOptions;
+}
+export type PutImageBlobResult = PutBlobResult;
+export interface PutFromUrlCommandOptions extends Omit<CommonCreateBlobOptions, "contentType"> {
+  optimizeImage: OptimizeImageOptions;
+}
+export type PutFromUrlBlobResult = PutBlobResult;
 
 const STORES = Symbol.for("next-nats.blob.stores");
 
@@ -114,40 +137,23 @@ function stores(): Map<string, Promise<ObjectStore>> {
   return (g[STORES] ??= new Map());
 }
 
-export function getBlobStore(bucket = getBlobConfig().bucket): Promise<ObjectStore> {
+function openStore(bucket: string, ttl?: number): Promise<ObjectStore> {
   const cache = stores();
   let store = cache.get(bucket);
   if (!store) {
-    store = getObjm().then((objm) => objm.create(bucket));
+    store = getObjm().then((objm) => objm.create(bucket, ttl === undefined ? undefined : { ttl }));
     cache.set(bucket, store);
     store.catch(() => cache.delete(bucket));
   }
   return store;
 }
 
-export function blobUrl(pathname: string): string {
-  const base = getBlobConfig().baseUrl.replace(/\/+$/, "");
-  return `${base}/${pathname.split("/").map(encodeURIComponent).join("/")}`;
+export function getBlobStore(bucket = getBlobConfig().bucket): Promise<ObjectStore> {
+  return openStore(bucket);
 }
 
-export function blobDownloadUrl(pathname: string): string {
-  return `${blobUrl(pathname)}?download=1`;
-}
-
-export function resolvePathname(urlOrPathname: string): string {
-  const base = getBlobConfig().baseUrl.replace(/\/+$/, "");
-  let candidate = urlOrPathname;
-  if (/^https?:\/\//i.test(candidate)) {
-    const parsed = new URL(candidate);
-    candidate = parsed.pathname;
-    const basePath = /^https?:\/\//i.test(base) ? new URL(base).pathname.replace(/\/+$/, "") : base;
-    if (basePath && candidate.startsWith(`${basePath}/`)) candidate = candidate.slice(basePath.length);
-    return decodeURIComponent(candidate).replace(/^\/+/, "");
-  }
-  if (base && candidate.startsWith(`${base}/`)) {
-    return decodeURIComponent(candidate.slice(base.length)).replace(/^\/+/, "");
-  }
-  return candidate.replace(/^\/+/, "");
+function getUploadStore(): Promise<ObjectStore> {
+  return openStore(`${getBlobConfig().bucket}_mpu`, UPLOAD_TTL_NANOS);
 }
 
 export function etagOf(info: ObjectInfo): string {
@@ -196,63 +202,108 @@ function withSuffix(pathname: string): string {
   return `${pathname}-${randomSuffix()}`;
 }
 
-function assertPathname(pathname: string): void {
-  if (!pathname || pathname.length > 1024) throw new BlobError("pathname is required and must be 1024 characters or fewer", { reason: "INVALID_PATHNAME", subject: "/pathname" });
-  if (pathname.endsWith("/")) throw new BlobError("pathname cannot end with a slash", { reason: "INVALID_PATHNAME", subject: "/pathname" });
+function invalidPathname(message: string): BlobError {
+  return new BlobError(message, { reason: "INVALID_PATHNAME", subject: "/pathname" });
 }
 
-export async function put(pathname: string, body: PutBody | null, options: PutCommandOptions): Promise<PutBlobResult> {
-  assertPathname(pathname);
+function assertPathname(pathname: string, allowFolder = false): void {
+  if (!pathname) throw invalidPathname("pathname is required");
+  if (pathname.length > MAXIMUM_PATHNAME_LENGTH) {
+    throw invalidPathname(`pathname is too long, maximum length is ${MAXIMUM_PATHNAME_LENGTH}`);
+  }
+  if (pathname.includes("//")) throw invalidPathname('pathname cannot contain "//"');
+  if (!allowFolder && pathname.endsWith("/")) throw invalidPathname("pathname cannot end with a slash");
+}
+
+function assertAccess(options: { access?: unknown } | undefined): void {
   if (!options || (options.access !== "public" && options.access !== "private")) {
     throw new BlobError('access must be "public" or "private"', { reason: "INVALID_ACCESS", subject: "/access" });
   }
-  if (body === null || body === undefined) throw new BlobError("body is required", { reason: "BODY_REQUIRED", subject: "/body" });
+}
+
+function unsupportedImageOptimization(): BlobError {
+  return new BlobError("Image optimization is not available on this store, remove `optimizeImage`", {
+    reason: "IMAGE_OPTIMIZATION_UNSUPPORTED",
+  });
+}
+
+function assertNotAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new BlobRequestAbortedError();
+}
+
+async function aborting<T>(signal: AbortSignal | undefined, run: () => Promise<T>): Promise<T> {
+  assertNotAborted(signal);
+  try {
+    return await run();
+  } catch (error) {
+    if (signal?.aborted) throw new BlobRequestAbortedError();
+    throw error;
+  }
+}
+
+interface StoreRequest {
+  access: BlobAccessType;
+  contentType?: string;
+  cacheControlMaxAge?: number;
+  allowOverwrite?: boolean;
+  ifMatch?: string;
+  maximumSizeInBytes?: number;
+  onUploadProgress?: WithUploadProgress["onUploadProgress"];
+  total?: number;
+  abortSignal?: AbortSignal;
+}
+
+async function storeStream(name: string, source: ReadableStream<Uint8Array>, request: StoreRequest): Promise<PutBlobResult> {
   const store = await getBlobStore();
-  const name = options.addRandomSuffix ? withSuffix(pathname) : pathname;
   const existing = await store.info(name);
   const live = existing && !existing.deleted ? existing : null;
 
-  if (options.ifMatch !== undefined) {
-    if (!live || etagOf(live) !== options.ifMatch) throw new BlobPreconditionFailedError();
-  } else if (live && !options.allowOverwrite) {
+  if (request.ifMatch !== undefined) {
+    if (!live || etagOf(live) !== request.ifMatch) throw new BlobPreconditionFailedError();
+  } else if (live && !request.allowOverwrite) {
     throw new BlobAlreadyExistsError();
   }
 
-  const contentType =
-    options.contentType ?? (typeof Blob !== "undefined" && body instanceof Blob && body.type ? body.type : inferContentType(name));
-  const total = typeof Blob !== "undefined" && body instanceof Blob ? body.size : undefined;
-  let stream = limitSize(toStream(body), options.maximumSizeInBytes);
-  if (options.onUploadProgress) {
+  let stream = limitSize(source, request.maximumSizeInBytes);
+  if (request.onUploadProgress) {
     let loaded = 0;
-    const report = options.onUploadProgress;
+    const report = request.onUploadProgress;
     stream = stream.pipeThrough(
       new TransformStream<Uint8Array, Uint8Array>({
         transform(chunk, controller) {
           loaded += chunk.length;
-          const known = total ?? loaded;
+          const known = request.total ?? loaded;
           report({ loaded, total: known, percentage: known ? Math.round((loaded / known) * 100) : 100 });
           controller.enqueue(chunk);
         },
       }),
     );
   }
-  if (options.abortSignal) {
-    const signal = options.abortSignal;
-    stream = stream.pipeThrough(new TransformStream<Uint8Array, Uint8Array>(), { signal });
+  if (request.abortSignal) {
+    stream = stream.pipeThrough(new TransformStream<Uint8Array, Uint8Array>(), { signal: request.abortSignal });
   }
 
-  const metadata: Record<string, string> = { contentType, access: options.access };
-  metadata.contentDisposition = dispositionFor(name);
-  if (options.cacheControlMaxAge !== undefined) {
-    metadata.cacheControl = `public, max-age=${options.cacheControlMaxAge}`;
-  }
+  const metadata: Record<string, string> = {
+    contentType: request.contentType ?? inferContentType(name),
+    access: request.access,
+    contentDisposition: dispositionFor(name),
+  };
+  if (request.cacheControlMaxAge !== undefined) metadata.cacheControl = `public, max-age=${request.cacheControlMaxAge}`;
 
-  const info = await store.put({ name, metadata }, stream, { previousRevision: options.ifMatch !== undefined || !options.allowOverwrite ? (existing?.revision ?? 0) : undefined }).catch((err: unknown) => {
-    if (err instanceof Error && /wrong last sequence/i.test(err.message)) {
-      throw new BlobAlreadyExistsError();
-    }
-    throw err;
-  });
+  const info = await aborting(request.abortSignal, () =>
+    store
+      .put({ name, metadata }, stream, {
+        previousRevision: request.ifMatch !== undefined || !request.allowOverwrite ? (existing?.revision ?? 0) : undefined,
+      })
+      .catch((err: unknown) => {
+        if (err instanceof Error && /wrong last sequence/i.test(err.message)) throw new BlobAlreadyExistsError();
+        throw err;
+      }),
+  );
+  return resultOf(info);
+}
+
+function resultOf(info: ObjectInfo): PutBlobResult {
   const d = describe(info);
   return {
     url: d.url,
@@ -264,7 +315,184 @@ export async function put(pathname: string, body: PutBody | null, options: PutCo
   };
 }
 
-export async function head(urlOrPathname: string, _options?: BlobCommandOptions): Promise<HeadBlobResult> {
+function contentTypeOf(body: PutBody, name: string, explicit: string | undefined): string {
+  if (explicit) return explicit;
+  if (typeof Blob !== "undefined" && body instanceof Blob && body.type) return body.type;
+  return inferContentType(name);
+}
+
+export async function put(pathname: string, body: PutBody | null, options: PutCommandOptions): Promise<PutBlobResult> {
+  assertPathname(pathname);
+  assertAccess(options);
+  if (body === null || body === undefined) throw new BlobError("body is required", { reason: "BODY_REQUIRED", subject: "/body" });
+  if (options.optimizeImage) throw unsupportedImageOptimization();
+  assertNotAborted(options.abortSignal);
+  const name = options.addRandomSuffix ? withSuffix(pathname) : pathname;
+  const total = typeof Blob !== "undefined" && body instanceof Blob ? body.size : undefined;
+  const contentType = contentTypeOf(body, name, options.contentType);
+
+  if (options.multipart) {
+    const uploader = await createMultipartUploader(name, { ...options, addRandomSuffix: false, contentType });
+    const parts: Part[] = [];
+    let loaded = 0;
+    let partNumber = 0;
+    for await (const piece of chunked(toStream(body), PART_SIZE)) {
+      parts.push(await uploader.uploadPart(++partNumber, piece));
+      loaded += piece.length;
+      const known = total ?? loaded;
+      options.onUploadProgress?.({ loaded, total: known, percentage: known ? Math.round((loaded / known) * 100) : 100 });
+    }
+    return uploader.complete(parts);
+  }
+
+  return storeStream(name, toStream(body), {
+    access: options.access,
+    contentType,
+    cacheControlMaxAge: options.cacheControlMaxAge,
+    allowOverwrite: options.allowOverwrite,
+    ifMatch: options.ifMatch,
+    maximumSizeInBytes: options.maximumSizeInBytes,
+    onUploadProgress: options.onUploadProgress,
+    total,
+    abortSignal: options.abortSignal,
+  });
+}
+
+export async function putImage(_pathname: string, _bodyOrUrl: PutBody | URL, _options: PutImageCommandOptions): Promise<PutImageBlobResult> {
+  throw unsupportedImageOptimization();
+}
+
+export async function putFromUrl(_pathname: string, _url: string, _options: PutFromUrlCommandOptions): Promise<PutFromUrlBlobResult> {
+  throw unsupportedImageOptimization();
+}
+
+interface UploadRecord {
+  key: string;
+  access: BlobAccessType;
+  contentType?: string;
+  cacheControlMaxAge?: number;
+  allowOverwrite?: boolean;
+  ifMatch?: string;
+  maximumSizeInBytes?: number;
+}
+
+const metaName = (uploadId: string) => `${uploadId}/meta`;
+const partName = (uploadId: string, partNumber: number) => `${uploadId}/${partNumber}`;
+
+async function loadUpload(uploadId: string, key: string): Promise<UploadRecord> {
+  const store = await getUploadStore();
+  const stored = uploadId ? await store.get(metaName(uploadId)) : null;
+  if (!stored) throw new BlobError("Unknown multipart upload, it may have expired", { reason: "UPLOAD_NOT_FOUND", subject: "/uploadId" });
+  const record = JSON.parse(await new Response(stored.data).text()) as UploadRecord;
+  if (record.key !== key) throw new BlobError("key does not match the multipart upload", { reason: "UPLOAD_KEY_MISMATCH", subject: "/key" });
+  return record;
+}
+
+export async function createMultipartUpload(
+  pathname: string,
+  options: CommonCreateBlobOptions,
+): Promise<{ key: string; uploadId: string }> {
+  assertPathname(pathname);
+  assertAccess(options);
+  assertNotAborted(options.abortSignal);
+  const key = options.addRandomSuffix ? withSuffix(pathname) : pathname;
+  const uploadId = globalThis.crypto.randomUUID();
+  const record: UploadRecord = {
+    key,
+    access: options.access,
+    contentType: options.contentType,
+    cacheControlMaxAge: options.cacheControlMaxAge,
+    allowOverwrite: options.allowOverwrite,
+    ifMatch: options.ifMatch,
+    maximumSizeInBytes: options.maximumSizeInBytes,
+  };
+  await (await getUploadStore()).putBlob({ name: metaName(uploadId) }, new TextEncoder().encode(JSON.stringify(record)));
+  return { key, uploadId };
+}
+
+export async function uploadPart(pathname: string, body: PutBody, options: UploadPartCommandOptions): Promise<Part> {
+  assertPathname(pathname);
+  assertAccess(options);
+  assertNotAborted(options.abortSignal);
+  if (!Number.isInteger(options.partNumber) || options.partNumber < 1 || options.partNumber > MAX_PARTS) {
+    throw new BlobError(`partNumber must be an integer between 1 and ${MAX_PARTS}`, { reason: "INVALID_PART_NUMBER", subject: "/partNumber" });
+  }
+  await loadUpload(options.uploadId, options.key);
+  const store = await getUploadStore();
+  const info = await aborting(options.abortSignal, () =>
+    store.put({ name: partName(options.uploadId, options.partNumber) }, toStream(body)),
+  );
+  return { etag: etagOf(info), partNumber: options.partNumber };
+}
+
+export async function completeMultipartUpload(
+  pathname: string,
+  parts: Part[],
+  options: CompleteMultipartUploadCommandOptions,
+): Promise<PutBlobResult> {
+  assertPathname(pathname);
+  assertAccess(options);
+  assertNotAborted(options.abortSignal);
+  const record = await loadUpload(options.uploadId, options.key);
+  if (parts.length === 0) throw new BlobError("parts must not be empty", { reason: "INVALID_PARTS", subject: "/parts" });
+  const ordered = [...parts].sort((a, b) => a.partNumber - b.partNumber);
+  const store = await getUploadStore();
+  const infos: ObjectInfo[] = [];
+  for (const part of ordered) {
+    const info = await store.info(partName(options.uploadId, part.partNumber));
+    if (!info || info.deleted || etagOf(info) !== part.etag) {
+      throw new BlobError(`Part ${part.partNumber} was not uploaded or its etag does not match`, {
+        reason: "INVALID_PART",
+        subject: "/parts",
+      });
+    }
+    infos.push(info);
+  }
+
+  const joined = concat(
+    infos.map((info) => async () => {
+      const part = await store.get(info.name);
+      if (!part) throw new BlobNotFoundError();
+      return part.data;
+    }),
+  );
+  const result = await storeStream(record.key, joined, {
+    access: options.access ?? record.access,
+    contentType: options.contentType ?? record.contentType,
+    cacheControlMaxAge: options.cacheControlMaxAge ?? record.cacheControlMaxAge,
+    allowOverwrite: options.allowOverwrite ?? record.allowOverwrite,
+    ifMatch: options.ifMatch ?? record.ifMatch,
+    maximumSizeInBytes: options.maximumSizeInBytes ?? record.maximumSizeInBytes,
+    abortSignal: options.abortSignal,
+  });
+  await Promise.all([...infos.map((info) => store.delete(info.name)), store.delete(metaName(options.uploadId))]).catch(() => undefined);
+  return result;
+}
+
+export async function createMultipartUploader(pathname: string, options: CommonCreateBlobOptions) {
+  const { key, uploadId } = await createMultipartUpload(pathname, options);
+  return {
+    key,
+    uploadId,
+    uploadPart: (partNumber: number, body: PutBody): Promise<Part> =>
+      uploadPart(pathname, body, { ...options, key, uploadId, partNumber }),
+    complete: (parts: Part[]): Promise<PutBlobResult> => completeMultipartUpload(pathname, parts, { ...options, key, uploadId }),
+  };
+}
+
+export async function createFolder(pathname: string, options: CreateFolderCommandOptions = {}): Promise<CreateFolderResult> {
+  const folder = pathname.endsWith("/") ? pathname : `${pathname}/`;
+  assertPathname(folder, true);
+  assertNotAborted(options.abortSignal);
+  const store = await getBlobStore();
+  if (!(await statBlob(folder, store))) {
+    await store.putBlob({ name: folder, metadata: { access: options.access ?? "public", contentType: "application/x-directory" } }, new Uint8Array());
+  }
+  return { pathname: folder, url: blobUrl(folder) };
+}
+
+export async function head(urlOrPathname: string, options?: BlobCommandOptions): Promise<HeadBlobResult> {
+  assertNotAborted(options?.abortSignal);
   const info = await statBlob(resolvePathname(urlOrPathname));
   if (!info) throw new BlobNotFoundError();
   const d = describe(info);
@@ -281,12 +509,14 @@ export async function head(urlOrPathname: string, _options?: BlobCommandOptions)
   };
 }
 
-export async function get(urlOrPathname: string, options: GetCommandOptions = {}): Promise<GetBlobResult | null> {
+export async function get(urlOrPathname: string, options: GetCommandOptions): Promise<GetBlobResult | null> {
+  assertNotAborted(options?.abortSignal);
   const store = await getBlobStore();
   const info = await statBlob(resolvePathname(urlOrPathname), store);
   if (!info) return null;
   const d = describe(info);
-  const base: GetBlobResultBlob = {
+  if (options?.access && options.access !== d.access) return null;
+  const base: GetBlobResultBlobBase = {
     url: d.url,
     downloadUrl: d.downloadUrl,
     pathname: d.pathname,
@@ -296,21 +526,14 @@ export async function get(urlOrPathname: string, options: GetCommandOptions = {}
     etag: d.etag,
   };
   const headers = new Headers({ ETag: d.etag, "Cache-Control": d.cacheControl, "Content-Disposition": d.contentDisposition });
-  if (options.ifNoneMatch && matchesEtag(options.ifNoneMatch, d.etag)) {
+  if (options?.ifNoneMatch && matchesEtag(options.ifNoneMatch, d.etag)) {
     return { statusCode: 304, stream: null, headers, blob: { ...base, contentType: null, size: null } };
   }
   const result = await store.get(info.name);
   if (!result) return null;
   headers.set("Content-Type", d.contentType);
-  let stream = result.data;
-  if (options.range) {
-    const end = Math.min(options.range.end ?? info.size - 1, info.size - 1);
-    stream = sliceStream(stream, options.range.start, end);
-    headers.set("Content-Length", String(end - options.range.start + 1));
-  } else {
-    headers.set("Content-Length", String(info.size));
-  }
-  return { statusCode: 200, stream, headers, blob: { ...base, contentType: d.contentType, size: d.size } };
+  headers.set("Content-Length", String(info.size));
+  return { statusCode: 200, stream: result.data, headers, blob: { ...base, contentType: d.contentType, size: d.size } };
 }
 
 export function matchesEtag(header: string, etag: string): boolean {
@@ -320,14 +543,15 @@ export function matchesEtag(header: string, etag: string): boolean {
     .some((v) => v === "*" || v === etag);
 }
 
-export async function del(urlOrPathname: string | string[], _options?: BlobCommandOptions & { ifMatch?: string }): Promise<void> {
+export async function del(urlOrPathname: string | string[], options?: DeleteCommandOptions): Promise<void> {
+  assertNotAborted(options?.abortSignal);
   const store = await getBlobStore();
   const targets = Array.isArray(urlOrPathname) ? urlOrPathname : [urlOrPathname];
   for (const target of targets) {
     const pathname = resolvePathname(target);
-    if (_options?.ifMatch !== undefined) {
+    if (options?.ifMatch !== undefined) {
       const info = await statBlob(pathname, store);
-      if (!info || etagOf(info) !== _options.ifMatch) throw new BlobPreconditionFailedError();
+      if (!info || etagOf(info) !== options.ifMatch) throw new BlobPreconditionFailedError();
     }
     await store.delete(pathname);
   }
@@ -336,6 +560,7 @@ export async function del(urlOrPathname: string | string[], _options?: BlobComma
 export async function list<M extends "expanded" | "folded" | undefined = undefined>(
   options: ListCommandOptions<M> = {},
 ): Promise<ListCommandResult<M>> {
+  assertNotAborted(options.abortSignal);
   const store = await getBlobStore();
   const limit = Math.min(Math.max(options.limit ?? 1000, 1), 1000);
   const prefix = options.prefix ?? "";
@@ -348,6 +573,7 @@ export async function list<M extends "expanded" | "folded" | undefined = undefin
   for (const info of infos) {
     if (folded) {
       const rest = info.name.slice(prefix.length);
+      if (rest === "") continue;
       const slash = rest.indexOf("/");
       if (slash >= 0) {
         const folder = `${prefix}${rest.slice(0, slash + 1)}`;
@@ -382,16 +608,26 @@ export async function list<M extends "expanded" | "folded" | undefined = undefin
   return result as ListCommandResult<M>;
 }
 
-export async function copy(fromUrlOrPathname: string, toPathname: string, options: PutCommandOptions): Promise<CopyBlobResult> {
-  const source = await get(fromUrlOrPathname);
-  if (!source || source.statusCode !== 200) throw new BlobNotFoundError();
-  return put(toPathname, source.stream, {
-    ...options,
-    contentType: options.contentType ?? source.blob.contentType,
+export async function copy(fromUrlOrPathname: string, toPathname: string, options: CopyCommandOptions): Promise<CopyBlobResult> {
+  assertPathname(toPathname);
+  assertAccess(options);
+  const store = await getBlobStore();
+  const info = await statBlob(resolvePathname(fromUrlOrPathname), store);
+  const source = info ? await store.get(info.name) : null;
+  if (!info || !source) throw new BlobNotFoundError();
+  const name = options.addRandomSuffix ? withSuffix(toPathname) : toPathname;
+  return storeStream(name, source.data, {
+    access: options.access,
+    contentType: options.contentType ?? describe(info).contentType,
+    cacheControlMaxAge: options.cacheControlMaxAge,
+    allowOverwrite: options.allowOverwrite,
+    ifMatch: options.ifMatch,
+    maximumSizeInBytes: options.maximumSizeInBytes,
+    abortSignal: options.abortSignal,
   });
 }
 
-export async function rename(fromUrlOrPathname: string, toPathname: string, options: PutCommandOptions): Promise<CopyBlobResult> {
+export async function rename(fromUrlOrPathname: string, toPathname: string, options: RenameCommandOptions): Promise<RenameBlobResult> {
   const result = await copy(fromUrlOrPathname, toPathname, options);
   await del(fromUrlOrPathname);
   return result;

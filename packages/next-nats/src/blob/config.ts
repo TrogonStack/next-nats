@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import { secretFromEnv } from "../secret.js";
 
 export interface BlobConfig {
@@ -11,11 +10,18 @@ const KEY = Symbol.for("next-nats.blob.config");
 
 type Holder = { [KEY]?: BlobConfig };
 
+function randomSecret(): string {
+  return Array.from(globalThis.crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 function fromEnv(): BlobConfig {
   return {
     bucket: process.env.NEXT_NATS_BLOB_BUCKET ?? "next_nats_blob",
-    baseUrl: process.env.BLOB_BASE_URL ?? "/blob",
-    secret: secretFromEnv(process.env.BLOB_SECRET)?.reveal() ?? randomBytes(32).toString("hex"),
+    baseUrl: process.env.BLOB_BASE_URL ?? process.env.NEXT_PUBLIC_BLOB_BASE_URL ?? "/blob",
+    secret:
+      secretFromEnv(process.env.BLOB_SECRET)?.reveal() ??
+      secretFromEnv(process.env.BLOB_READ_WRITE_TOKEN)?.reveal() ??
+      randomSecret(),
   };
 }
 

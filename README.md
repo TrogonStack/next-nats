@@ -14,7 +14,7 @@ export default withNats({ cacheComponents: true }, { cache: true });
 | Vercel primitive | Import |
 | --- | --- |
 | KV | `@trogonstack/next-nats/kv` |
-| Blob | `@trogonstack/next-nats/blob` |
+| Blob | `@trogonstack/next-nats/blob`, `@trogonstack/next-nats/blob/client` |
 | Queues | `@trogonstack/next-nats/queue` |
 | Edge Config | `@trogonstack/next-nats/edge-config` |
 | Data Cache and `use cache` | `@trogonstack/next-nats/cache`, wired by `@trogonstack/next-nats/next` |

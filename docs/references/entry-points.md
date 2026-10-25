@@ -8,6 +8,7 @@ Every module is a subpath export of the `@trogonstack/next-nats` package. Server
 | `@trogonstack/next-nats/instrumentation` | `registerNats` for `instrumentation.ts` |
 | `@trogonstack/next-nats/kv` | [KV](./kv.md) |
 | `@trogonstack/next-nats/blob` | [Blob](./blob.md) |
+| `@trogonstack/next-nats/blob/client` | Blob client uploads and `handleUpload`, browser safe |
 | `@trogonstack/next-nats/queue` | [Queue](./queue.md) |
 | `@trogonstack/next-nats/edge-config` | [Edge Config](./edge-config.md) |
 | `@trogonstack/next-nats/cache` | [Cache](./cache.md) stores and handler factories |

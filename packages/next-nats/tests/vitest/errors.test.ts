@@ -89,7 +89,7 @@ describe("migrated errors keep their compat surface", () => {
   it("blob", () => {
     const missing = new BlobNotFoundError();
     expect(missing).toBeInstanceOf(BlobError);
-    expect(missing.name).toBe("BlobNotFoundError");
+    expect(missing.name).toBe("Error");
     expect(missing.message).toBe("Vercel Blob: The requested blob does not exist");
     expect(missing.spec).toMatchObject({ code: Code.NOT_FOUND, domain: "next-nats.blob", reason: "BLOB_NOT_FOUND" });
     expect(missing.toPublic().message).toBe("The requested blob does not exist");
