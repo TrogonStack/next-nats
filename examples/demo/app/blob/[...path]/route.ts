@@ -1,5 +1,19 @@
+import { connection } from "next/server";
 import { createBlobRoute } from "next-nats/blob";
 
-export const dynamic = "force-dynamic";
+const route = createBlobRoute();
 
-export const { GET, HEAD, PUT } = createBlobRoute();
+export async function GET(...args: Parameters<typeof route.GET>) {
+  await connection();
+  return route.GET(...args);
+}
+
+export async function HEAD(...args: Parameters<typeof route.HEAD>) {
+  await connection();
+  return route.HEAD(...args);
+}
+
+export async function PUT(...args: Parameters<typeof route.PUT>) {
+  await connection();
+  return route.PUT(...args);
+}

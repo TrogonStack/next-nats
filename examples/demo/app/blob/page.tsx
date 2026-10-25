@@ -1,21 +1,17 @@
+import { Suspense } from "react";
+import { connection } from "next/server";
 import { list } from "next-nats/blob";
 import { features } from "@/lib/features";
 import { deleteBlob } from "./actions";
 import { Uploader } from "./uploader";
 
-export const dynamic = "force-dynamic";
-
 const feature = features.find((f) => f.slug === "blob")!;
 
-export default async function Page() {
+async function Blobs() {
+  await connection();
   const { blobs } = await list({ limit: 100 });
   return (
-    <main>
-      <h1>{feature.title}</h1>
-      <p>{feature.blurb}</p>
-      <h2>Upload</h2>
-      <Uploader />
-      <h2>Blobs</h2>
+    <>
       {blobs.length === 0 && <p>Nothing uploaded yet.</p>}
       <ul style={{ paddingLeft: "1.25rem", display: "grid", gap: "0.5rem" }}>
         {blobs.map((blob) => (
@@ -29,6 +25,21 @@ export default async function Page() {
           </li>
         ))}
       </ul>
+    </>
+  );
+}
+
+export default function Page() {
+  return (
+    <main>
+      <h1>{feature.title}</h1>
+      <p>{feature.blurb}</p>
+      <h2>Upload</h2>
+      <Uploader />
+      <h2>Blobs</h2>
+      <Suspense fallback={<p>loading</p>}>
+        <Blobs />
+      </Suspense>
     </main>
   );
 }

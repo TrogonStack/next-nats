@@ -1,14 +1,15 @@
+import { Suspense } from "react";
+import { connection } from "next/server";
 import { discover } from "next-nats/services";
 import { features } from "@/lib/features";
 import { CalcForm, ScatterButton } from "./form";
-
-export const dynamic = "force-dynamic";
 
 const feature = features.find((f) => f.slug === "services")!;
 
 const ms = (nanos: number) => (nanos / 1_000_000).toFixed(2);
 
-export default async function Page() {
+async function Discovery() {
+  await connection();
   const found = await discover({ timeout: 400 });
   const rows = found.stats.flatMap((s) =>
     (s.endpoints ?? []).map((e) => ({
@@ -23,21 +24,6 @@ export default async function Page() {
     })),
   );
   return (
-    <main style={{ display: "grid", gap: "1.5rem" }}>
-      <header>
-        <h1>{feature.title}</h1>
-        <p>{feature.blurb}</p>
-      </header>
-      <section style={{ display: "grid", gap: "0.5rem" }}>
-        <h2>Request/reply from a Server Action</h2>
-        <p>Divide by zero returns a mapped service error (422). Reload to see stats move.</p>
-        <CalcForm />
-      </section>
-      <section style={{ display: "grid", gap: "0.5rem" }}>
-        <h2>Scatter-gather</h2>
-        <p>The probe service has no queue group, so every instance answers one request.</p>
-        <ScatterButton />
-      </section>
       <section style={{ display: "grid", gap: "0.5rem" }}>
         <h2>Discovery</h2>
         <p>
@@ -70,6 +56,29 @@ export default async function Page() {
           </tbody>
         </table>
       </section>
+  );
+}
+
+export default function Page() {
+  return (
+    <main style={{ display: "grid", gap: "1.5rem" }}>
+      <header>
+        <h1>{feature.title}</h1>
+        <p>{feature.blurb}</p>
+      </header>
+      <section style={{ display: "grid", gap: "0.5rem" }}>
+        <h2>Request/reply from a Server Action</h2>
+        <p>Divide by zero returns a mapped service error (422). Reload to see stats move.</p>
+        <CalcForm />
+      </section>
+      <section style={{ display: "grid", gap: "0.5rem" }}>
+        <h2>Scatter-gather</h2>
+        <p>The probe service has no queue group, so every instance answers one request.</p>
+        <ScatterButton />
+      </section>
+      <Suspense fallback={<p>loading</p>}>
+        <Discovery />
+      </Suspense>
     </main>
   );
 }

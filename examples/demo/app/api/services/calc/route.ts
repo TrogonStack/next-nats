@@ -1,9 +1,9 @@
+import { connection } from "next/server";
 import { ServiceCallError } from "next-nats/services";
 import { calc } from "@/lib/service-clients";
 
-export const dynamic = "force-dynamic";
-
 export async function POST(request: Request) {
+  await connection();
   const { op, a, b } = (await request.json()) as { op: "add" | "divide"; a: number; b: number };
   const client = calc();
   if (op !== "add" && op !== "divide") return Response.json({ error: "op must be add or divide" }, { status: 400 });
