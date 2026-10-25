@@ -58,7 +58,7 @@ describe("blob", () => {
 
   it("adds a random suffix", async () => {
     const a = await put("sfx/a.png", Buffer.from("1"), { access: "public", addRandomSuffix: true });
-    expect(a.pathname).toMatch(/^sfx\/a-[a-z0-9]{10}\.png$/);
+    expect(a.pathname).toMatch(/^sfx\/a-[A-Za-z0-9]{30}\.png$/);
     expect(a.contentType).toBe("image/png");
   });
 

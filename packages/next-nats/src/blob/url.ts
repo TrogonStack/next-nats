@@ -31,3 +31,22 @@ export function resolvePathname(urlOrPathname: string): string {
   }
   return withoutQuery.replace(/^\/+/, "");
 }
+
+export function isHttpUrl(value: string): boolean {
+  return value.startsWith("http://") || value.startsWith("https://");
+}
+
+export function isAllowedBlobUrl(url: URL): boolean {
+  if (url.hostname.endsWith(".blob.vercel-storage.com")) return true;
+  const base = getBlobConfig().baseUrl;
+  if (!isHttpUrl(base)) return false;
+  return new URL(base).origin === url.origin;
+}
+
+export function rawPathnameOfUrl(url: URL): string {
+  const base = getBlobConfig().baseUrl.replace(/\/+$/, "");
+  const basePath = isHttpUrl(base) ? new URL(base).pathname.replace(/\/+$/, "") : base;
+  let path = url.pathname;
+  if (basePath && path.startsWith(`${basePath}/`)) path = path.slice(basePath.length);
+  return path.replace(/^\/+/, "");
+}

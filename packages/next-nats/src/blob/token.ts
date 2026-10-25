@@ -15,6 +15,7 @@ import type {
 export const CLIENT_TOKEN_PREFIX = "blob_client_";
 export const SIGNATURE_HEADER = "x-blob-signature";
 const ONE_HOUR = 60 * 60 * 1000;
+const CLIENT_TOKEN_DEFAULT_LIFETIME = 30 * 1000;
 const ALL_OPERATIONS: DelegationOperation[] = ["get", "head", "put", "delete"];
 
 const encoder = new TextEncoder();
@@ -74,8 +75,18 @@ async function open<T>(token: string, key: string): Promise<T> {
 
 export async function generateClientTokenFromReadWriteToken(options: GenerateClientTokenOptions): Promise<string> {
   const { token: _token, abortSignal: _signal, oidcToken: _oidc, storeId: _store, ...rest } = options;
-  if (!rest.pathname) throw new BlobError("pathname is required", { reason: "INVALID_PATHNAME", subject: "/pathname" });
-  const payload: DecodedClientTokenPayload = { ...rest, validUntil: rest.validUntil ?? Date.now() + ONE_HOUR };
+  if (rest.ifMatch && rest.allowOverwrite === false) {
+    throw new BlobError(
+      "ifMatch and allowOverwrite: false are contradictory. ifMatch is used for conditional overwrites, which requires allowOverwrite to be true.",
+      { reason: "CONTRADICTORY_OPTIONS", subject: "/ifMatch" },
+    );
+  }
+  const allowOverwrite = rest.ifMatch && rest.allowOverwrite === undefined ? true : rest.allowOverwrite;
+  const payload: DecodedClientTokenPayload = {
+    ...rest,
+    ...(allowOverwrite !== undefined && { allowOverwrite }),
+    validUntil: rest.validUntil ?? Date.now() + CLIENT_TOKEN_DEFAULT_LIFETIME,
+  };
   return `${CLIENT_TOKEN_PREFIX}${await seal(payload, getBlobSecret())}`;
 }
 

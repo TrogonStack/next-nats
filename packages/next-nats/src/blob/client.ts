@@ -1,6 +1,8 @@
 import type { IncomingMessage } from "node:http";
 import { getBlobConfig } from "./config.js";
 import { BlobError, BlobRequestAbortedError, blobErrorFromResponse } from "./errors.js";
+import { multipartProgress, uploadProgress } from "./progress.js";
+import { assertAccess, assertBody, assertBodyShape, assertPathname } from "./validate.js";
 import {
   CLIENT_TOKEN_PREFIX,
   SIGNATURE_HEADER,
@@ -93,14 +95,21 @@ function assertClientToken(token: string | undefined, method: string): asserts t
   if (!token?.startsWith(CLIENT_TOKEN_PREFIX)) throw new BlobError(`${method} must be called with a client token`);
 }
 
-function rejectServerOptions(options: object, method: string): void {
-  const forbidden = ["addRandomSuffix", "allowOverwrite", "cacheControlMaxAge", "ifMatch"];
-  const found = forbidden.some((key) => (options as Record<string, unknown>)[key] !== undefined);
-  if (found) {
-    throw new BlobError(
-      `${method} doesn't allow \`addRandomSuffix\`, \`cacheControlMaxAge\`, \`allowOverwrite\` or \`ifMatch\`. Configure these options at the server side when generating client tokens.`,
-    );
+const CLIENT_OPTION_LIST = "`addRandomSuffix`, `cacheControlMaxAge`, `allowOverwrite` or `ifMatch`";
+const TOKEN_OPTION_LIST = "`addRandomSuffix`, `cacheControlMaxAge` or `allowOverwrite`";
+
+function rejectServerOptions(options: object, method: string, guidance = "when generating client tokens", list = TOKEN_OPTION_LIST): void {
+  const keys = list === TOKEN_OPTION_LIST ? ["addRandomSuffix", "allowOverwrite", "cacheControlMaxAge"] : ["addRandomSuffix", "allowOverwrite", "cacheControlMaxAge", "ifMatch"];
+  if (keys.some((key) => (options as Record<string, unknown>)[key] !== undefined)) {
+    throw new BlobError(`${method} doesn't allow ${list}. Configure these options at the server side ${guidance}.`);
   }
+}
+
+function checkedPutInputs(pathname: string, options: { access?: unknown } | undefined, method: string): void {
+  assertPathname(pathname);
+  assertAccess(options);
+  assertClientToken((options as { token?: string }).token, method);
+  rejectServerOptions(options as object, method);
 }
 
 async function send(
@@ -123,10 +132,6 @@ async function send(
   }
 }
 
-function report(callback: WithUploadProgress["onUploadProgress"], loaded: number, total: number): void {
-  callback?.({ loaded, total, percentage: total ? Math.round((loaded / total) * 100) : 100 });
-}
-
 async function putVia(
   url: string,
   token: string | undefined,
@@ -135,13 +140,15 @@ async function putVia(
   pathname: string,
 ): Promise<PutBlobResult> {
   const blob = await toBlob(body);
-  report(options.onUploadProgress, 0, blob.size);
+  const progress = uploadProgress(options.onUploadProgress, blob.size);
+  progress.start();
   const contentType = options.contentType ?? (blob.type || undefined);
   const response = await send(url, { method: "PUT", body: blob, headers: contentType ? { "content-type": contentType } : {} }, token, {
     ...options,
     contentType,
   });
-  report(options.onUploadProgress, blob.size, blob.size);
+  progress.advance(blob.size);
+  progress.finish();
   return (await response.json()) as PutBlobResult;
 }
 
@@ -161,7 +168,8 @@ async function putMultipart(
   const parts: Part[] = new Array(count);
   let next = 0;
   let loaded = 0;
-  report(options.onUploadProgress, 0, blob.size);
+  const progress = multipartProgress(options.onUploadProgress, blob.size);
+  progress.start();
   await Promise.all(
     Array.from({ length: Math.min(PARALLEL_PARTS, count) }, async () => {
       for (;;) {
@@ -170,7 +178,7 @@ async function putMultipart(
         const chunk = blob.slice(index * PART_SIZE, (index + 1) * PART_SIZE);
         parts[index] = await uploadOne(target, index + 1, chunk);
         loaded += chunk.size;
-        report(options.onUploadProgress, loaded, blob.size);
+        progress.advance(loaded);
       }
     }),
   );
@@ -181,20 +189,21 @@ export async function createMultipartUpload(
   pathname: string,
   options: ClientCreateMultipartUploadCommandOptions,
 ): Promise<{ key: string; uploadId: string }> {
-  assertClientToken(options?.token, "client/`createMultipartUpload`");
-  rejectServerOptions(options, "client/`createMultipartUpload`");
+  checkedPutInputs(pathname, options, "client/`createMultipartUpload`");
   const response = await send(endpoint(pathname, { mpu: "create" }), { method: "POST" }, options.token, options);
   return (await response.json()) as { key: string; uploadId: string };
 }
 
 export async function uploadPart(pathname: string, body: PutBody, options: ClientMultipartUploadCommandOptions): Promise<Part> {
-  assertClientToken(options?.token, "client/`multipartUpload`");
-  rejectServerOptions(options, "client/`multipartUpload`");
+  checkedPutInputs(pathname, options, "client/`multipartUpload`");
+  assertBodyShape(body);
   const blob = await toBlob(body);
-  report(options.onUploadProgress, 0, blob.size);
+  const progress = uploadProgress(options.onUploadProgress, blob.size);
+  progress.start();
   const url = endpoint(pathname, { mpu: "part", uploadId: options.uploadId, key: options.key, partNumber: options.partNumber });
   const response = await send(url, { method: "PUT", body: blob }, options.token, options);
-  report(options.onUploadProgress, blob.size, blob.size);
+  progress.advance(blob.size);
+  progress.finish();
   return (await response.json()) as Part;
 }
 
@@ -203,8 +212,7 @@ export async function completeMultipartUpload(
   parts: Part[],
   options: ClientCompleteMultipartUploadCommandOptions,
 ): Promise<PutBlobResult> {
-  assertClientToken(options?.token, "client/`completeMultipartUpload`");
-  rejectServerOptions(options, "client/`completeMultipartUpload`");
+  checkedPutInputs(pathname, options, "client/`completeMultipartUpload`");
   const url = endpoint(pathname, { mpu: "complete", uploadId: options.uploadId, key: options.key });
   const response = await send(
     url,
@@ -230,8 +238,8 @@ export async function createMultipartUploader(pathname: string, options: ClientC
 }
 
 export async function put(pathname: string, body: PutBody, options: ClientPutCommandOptions): Promise<PutBlobResult> {
-  assertClientToken(options?.token, "client/`put`");
-  rejectServerOptions(options, "client/`put`");
+  assertBody(body);
+  checkedPutInputs(pathname, options, "client/`put`");
   return uploadWithToken(pathname, body, options.token, options);
 }
 
@@ -266,34 +274,49 @@ async function postJson<T>(options: CommonUploadOptions & { abortSignal?: AbortS
   return (await response.json()) as T;
 }
 
-function rejectUploadOptions(options: UploadOptions, method: string): void {
-  if (options.handleUploadUrl === undefined) throw new BlobError(`client/\`${method}\` requires the 'handleUploadUrl' parameter`);
-  rejectServerOptions(options, `client/\`${method}\``);
+function checkedUploadInputs(pathname: string, body: PutBody, options: UploadOptions, method: string): void {
+  assertBody(body);
+  assertPathname(pathname);
+  assertAccess(options);
+  if (options.handleUploadUrl === undefined) throw new BlobError("client/`upload` requires the 'handleUploadUrl' parameter");
+  rejectServerOptions(
+    options,
+    `client/\`${method}\``,
+    method === "upload" ? "when generating client tokens" : "when generating presigned URLs",
+    CLIENT_OPTION_LIST,
+  );
 }
 
 export async function upload(pathname: string, body: PutBody, options: UploadOptions): Promise<PutBlobResult> {
-  rejectUploadOptions(options, "upload");
-  const { clientToken } = await postJson<{ clientToken: string }>(
+  checkedUploadInputs(pathname, body, options, "upload");
+  const response = await postJson<{ clientToken?: string }>(
     options,
     {
       type: EventTypes.generateClientToken,
       payload: { pathname, clientPayload: options.clientPayload ?? null, multipart: options.multipart ?? false },
     },
-    "Failed to retrieve the client token",
-  );
-  return uploadWithToken(pathname, body, clientToken, options);
+    "Failed to  retrieve the client token",
+  ).catch((error: unknown) => {
+    if (error instanceof SyntaxError) throw new BlobError("Failed to retrieve the client token");
+    throw error;
+  });
+  return uploadWithToken(pathname, body, response.clientToken ?? "", options);
 }
 
 export async function uploadPresigned(pathname: string, body: PutBody, options: UploadOptions): Promise<PutBlobResult> {
-  rejectUploadOptions(options, "uploadPresigned");
-  const { presignedUrlPayload } = await postJson<{ presignedUrlPayload: PresignedUrlPayload }>(
+  checkedUploadInputs(pathname, body, options, "uploadPresigned");
+  const { presignedUrlPayload } = await postJson<{ presignedUrlPayload?: PresignedUrlPayload }>(
     options,
     {
       type: EventTypes.generatePresignedUrl,
       payload: { pathname, clientPayload: options.clientPayload ?? null, multipart: options.multipart ?? false },
     },
-    "Failed to retrieve the presigned URL payload",
-  );
+    "Failed to retrieve the presigned URL",
+  ).catch((error: unknown) => {
+    if (error instanceof SyntaxError) throw new BlobError("Failed to retrieve the presigned URL");
+    throw error;
+  });
+  if (!presignedUrlPayload) throw new BlobError("Missing presignedUrlPayload");
   return putVia(presignedUrlFromPayload(presignedUrlPayload), undefined, body, options, pathname);
 }
 
@@ -353,17 +376,19 @@ function isFetchRequest(request: RequestType): request is Request {
 }
 
 function callbackUrlOf(request: RequestType): string {
-  if (isFetchRequest(request)) {
-    const url = new URL(request.url);
-    return `${url.origin}${url.pathname}`;
-  }
+  const target = isFetchRequest(request) ? new URL(request.url) : undefined;
   const header = (name: string) => {
+    if (isFetchRequest(request)) return undefined;
     const value = request.headers[name];
     return Array.isArray(value) ? value[0] : value;
   };
+  const pathAndSearch = target ? `${target.pathname}${target.search}` : (request.url ?? "");
+  const configured = typeof process !== "undefined" ? process.env.VERCEL_BLOB_CALLBACK_URL : undefined;
+  if (configured) return `${configured}${pathAndSearch}`;
+  if (target) return `${target.origin}${pathAndSearch}`;
   const protocol = header("x-forwarded-proto") ?? "http";
   const host = header("x-forwarded-host") ?? header("host");
-  return `${protocol}://${host}${(request.url ?? "").split("?")[0]}`;
+  return `${protocol}://${host}${pathAndSearch}`;
 }
 
 function signatureOf(request: RequestType): string {

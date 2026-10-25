@@ -2,6 +2,7 @@ import "server-only";
 import type { ObjectInfo, ObjectStore } from "@nats-io/obj";
 import { getObjm } from "../connection.js";
 import { getBlobConfig } from "./config.js";
+import { assertAccess, assertBody, assertConsistentIfMatch, assertPathname } from "./validate.js";
 import { chunked, concat, inferContentType, limitSize, toStream } from "./body.js";
 import {
   BlobAlreadyExistsError,
@@ -10,7 +11,8 @@ import {
   BlobPreconditionFailedError,
   BlobRequestAbortedError,
 } from "./errors.js";
-import { blobDownloadUrl, blobUrl, resolvePathname } from "./url.js";
+import { blobDownloadUrl, blobUrl, isAllowedBlobUrl, isHttpUrl, rawPathnameOfUrl, resolvePathname } from "./url.js";
+import { bodyLength, multipartProgress, uploadProgress, type UploadProgress } from "./progress.js";
 import type {
   BlobAccessType,
   BlobCommandOptions,
@@ -29,7 +31,6 @@ import type {
 export { blobDownloadUrl, blobUrl, resolvePathname, getDownloadUrl } from "./url.js";
 export type { BlobAccessType, BlobCommandOptions, PutBlobResult } from "./types.js";
 
-const MAXIMUM_PATHNAME_LENGTH = 950;
 const PART_SIZE = 8 * 1024 * 1024;
 const MAX_PARTS = 10_000;
 const UPLOAD_TTL_NANOS = 24 * 60 * 60 * 1_000_000_000;
@@ -191,8 +192,11 @@ export async function statBlob(pathname: string, store?: ObjectStore): Promise<O
   return info && !info.deleted ? info : null;
 }
 
+const SUFFIX_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+const SUFFIX_LENGTH = 30;
+
 function randomSuffix(): string {
-  return Math.random().toString(36).slice(2, 12).padEnd(10, "0");
+  return Array.from(globalThis.crypto.getRandomValues(new Uint8Array(SUFFIX_LENGTH)), (b) => SUFFIX_ALPHABET[b % SUFFIX_ALPHABET.length]).join("");
 }
 
 function withSuffix(pathname: string): string {
@@ -200,25 +204,6 @@ function withSuffix(pathname: string): string {
   const dot = pathname.lastIndexOf(".");
   if (dot > slash + 1) return `${pathname.slice(0, dot)}-${randomSuffix()}${pathname.slice(dot)}`;
   return `${pathname}-${randomSuffix()}`;
-}
-
-function invalidPathname(message: string): BlobError {
-  return new BlobError(message, { reason: "INVALID_PATHNAME", subject: "/pathname" });
-}
-
-function assertPathname(pathname: string, allowFolder = false): void {
-  if (!pathname) throw invalidPathname("pathname is required");
-  if (pathname.length > MAXIMUM_PATHNAME_LENGTH) {
-    throw invalidPathname(`pathname is too long, maximum length is ${MAXIMUM_PATHNAME_LENGTH}`);
-  }
-  if (pathname.includes("//")) throw invalidPathname('pathname cannot contain "//"');
-  if (!allowFolder && pathname.endsWith("/")) throw invalidPathname("pathname cannot end with a slash");
-}
-
-function assertAccess(options: { access?: unknown } | undefined): void {
-  if (!options || (options.access !== "public" && options.access !== "private")) {
-    throw new BlobError('access must be "public" or "private"', { reason: "INVALID_ACCESS", subject: "/access" });
-  }
 }
 
 function unsupportedImageOptimization(): BlobError {
@@ -248,12 +233,12 @@ interface StoreRequest {
   allowOverwrite?: boolean;
   ifMatch?: string;
   maximumSizeInBytes?: number;
-  onUploadProgress?: WithUploadProgress["onUploadProgress"];
-  total?: number;
+  progress?: UploadProgress;
   abortSignal?: AbortSignal;
 }
 
 async function storeStream(name: string, source: ReadableStream<Uint8Array>, request: StoreRequest): Promise<PutBlobResult> {
+  request.progress?.start();
   const store = await getBlobStore();
   const existing = await store.info(name);
   const live = existing && !existing.deleted ? existing : null;
@@ -265,15 +250,14 @@ async function storeStream(name: string, source: ReadableStream<Uint8Array>, req
   }
 
   let stream = limitSize(source, request.maximumSizeInBytes);
-  if (request.onUploadProgress) {
+  if (request.progress) {
+    const progress = request.progress;
     let loaded = 0;
-    const report = request.onUploadProgress;
     stream = stream.pipeThrough(
       new TransformStream<Uint8Array, Uint8Array>({
         transform(chunk, controller) {
           loaded += chunk.length;
-          const known = request.total ?? loaded;
-          report({ loaded, total: known, percentage: known ? Math.round((loaded / known) * 100) : 100 });
+          progress.advance(loaded);
           controller.enqueue(chunk);
         },
       }),
@@ -300,6 +284,7 @@ async function storeStream(name: string, source: ReadableStream<Uint8Array>, req
         throw err;
       }),
   );
+  request.progress?.finish();
   return resultOf(info);
 }
 
@@ -315,45 +300,44 @@ function resultOf(info: ObjectInfo): PutBlobResult {
   };
 }
 
-function contentTypeOf(body: PutBody, name: string, explicit: string | undefined): string {
-  if (explicit) return explicit;
-  if (typeof Blob !== "undefined" && body instanceof Blob && body.type) return body.type;
-  return inferContentType(name);
+function contentTypeOf(name: string, explicit: string | undefined): string {
+  return explicit || inferContentType(name);
 }
 
 export async function put(pathname: string, body: PutBody | null, options: PutCommandOptions): Promise<PutBlobResult> {
+  assertBody(body);
   assertPathname(pathname);
   assertAccess(options);
-  if (body === null || body === undefined) throw new BlobError("body is required", { reason: "BODY_REQUIRED", subject: "/body" });
+  assertConsistentIfMatch(options);
   if (options.optimizeImage) throw unsupportedImageOptimization();
   assertNotAborted(options.abortSignal);
   const name = options.addRandomSuffix ? withSuffix(pathname) : pathname;
-  const total = typeof Blob !== "undefined" && body instanceof Blob ? body.size : undefined;
-  const contentType = contentTypeOf(body, name, options.contentType);
+  const length = bodyLength(body as PutBody);
+  const contentType = contentTypeOf(name, options.contentType);
 
   if (options.multipart) {
+    const progress = multipartProgress(options.onUploadProgress, length);
+    progress.start();
     const uploader = await createMultipartUploader(name, { ...options, addRandomSuffix: false, contentType });
     const parts: Part[] = [];
     let loaded = 0;
     let partNumber = 0;
-    for await (const piece of chunked(toStream(body), PART_SIZE)) {
+    for await (const piece of chunked(toStream(body as PutBody), PART_SIZE)) {
       parts.push(await uploader.uploadPart(++partNumber, piece));
       loaded += piece.length;
-      const known = total ?? loaded;
-      options.onUploadProgress?.({ loaded, total: known, percentage: known ? Math.round((loaded / known) * 100) : 100 });
+      progress.advance(loaded);
     }
     return uploader.complete(parts);
   }
 
-  return storeStream(name, toStream(body), {
+  return storeStream(name, toStream(body as PutBody), {
     access: options.access,
     contentType,
     cacheControlMaxAge: options.cacheControlMaxAge,
     allowOverwrite: options.allowOverwrite,
     ifMatch: options.ifMatch,
     maximumSizeInBytes: options.maximumSizeInBytes,
-    onUploadProgress: options.onUploadProgress,
-    total,
+    progress: options.onUploadProgress ? uploadProgress(options.onUploadProgress, length) : undefined,
     abortSignal: options.abortSignal,
   });
 }
@@ -510,23 +494,47 @@ export async function head(urlOrPathname: string, options?: BlobCommandOptions):
 }
 
 export async function get(urlOrPathname: string, options: GetCommandOptions): Promise<GetBlobResult | null> {
-  assertNotAborted(options?.abortSignal);
+  if (!urlOrPathname) throw new BlobError("url or pathname is required");
+  assertAccess(options);
+  let given: URL | undefined;
+  if (isHttpUrl(urlOrPathname)) {
+    try {
+      given = new URL(urlOrPathname);
+    } catch {
+      throw new BlobError("Invalid URL: unable to parse the provided URL");
+    }
+    if (!isAllowedBlobUrl(given)) {
+      throw new BlobError(
+        "Invalid URL: the URL does not point to a Vercel Blob store. Use a pathname instead, see https://vercel.com/docs/vercel-blob",
+      );
+    }
+  }
+  if (options.abortSignal?.aborted) throw new DOMException("This operation was aborted", "AbortError");
   const store = await getBlobStore();
   const info = await statBlob(resolvePathname(urlOrPathname), store);
   if (!info) return null;
   const d = describe(info);
-  if (options?.access && options.access !== d.access) return null;
+  if (!given && options.access !== d.access) return null;
+  const downloading = given?.searchParams.has("download") ?? false;
+  const contentDisposition = downloading ? d.contentDisposition.replace(/^inline/, "attachment") : d.contentDisposition;
+  const downloadUrl = given ? new URL(given) : undefined;
+  downloadUrl?.searchParams.set("download", "1");
   const base: GetBlobResultBlobBase = {
-    url: d.url,
-    downloadUrl: d.downloadUrl,
-    pathname: d.pathname,
-    contentDisposition: d.contentDisposition,
+    url: given ? urlOrPathname : d.url,
+    downloadUrl: downloadUrl?.toString() ?? d.downloadUrl,
+    pathname: given ? rawPathnameOfUrl(given) : urlOrPathname,
+    contentDisposition,
     cacheControl: d.cacheControl,
     uploadedAt: d.uploadedAt,
     etag: d.etag,
   };
-  const headers = new Headers({ ETag: d.etag, "Cache-Control": d.cacheControl, "Content-Disposition": d.contentDisposition });
-  if (options?.ifNoneMatch && matchesEtag(options.ifNoneMatch, d.etag)) {
+  const headers = new Headers({
+    ETag: d.etag,
+    "Cache-Control": d.cacheControl,
+    "Content-Disposition": contentDisposition,
+    "Last-Modified": d.uploadedAt.toUTCString(),
+  });
+  if (options.ifNoneMatch && matchesEtag(options.ifNoneMatch, d.etag)) {
     return { statusCode: 304, stream: null, headers, blob: { ...base, contentType: null, size: null } };
   }
   const result = await store.get(info.name);
@@ -547,6 +555,7 @@ export async function del(urlOrPathname: string | string[], options?: DeleteComm
   assertNotAborted(options?.abortSignal);
   const store = await getBlobStore();
   const targets = Array.isArray(urlOrPathname) ? urlOrPathname : [urlOrPathname];
+  if (options?.ifMatch && targets.length > 1) throw new BlobError("ifMatch can only be used when deleting a single URL.");
   for (const target of targets) {
     const pathname = resolvePathname(target);
     if (options?.ifMatch !== undefined) {
@@ -562,7 +571,7 @@ export async function list<M extends "expanded" | "folded" | undefined = undefin
 ): Promise<ListCommandResult<M>> {
   assertNotAborted(options.abortSignal);
   const store = await getBlobStore();
-  const limit = Math.min(Math.max(options.limit ?? 1000, 1), 1000);
+  const limit = options.limit ? Math.min(Math.max(options.limit, 1), 1000) : 1000;
   const prefix = options.prefix ?? "";
   const infos = (await store.list()).filter((i) => !i.deleted && i.name.startsWith(prefix));
   const folded = options.mode === "folded";
@@ -609,8 +618,9 @@ export async function list<M extends "expanded" | "folded" | undefined = undefin
 }
 
 export async function copy(fromUrlOrPathname: string, toPathname: string, options: CopyCommandOptions): Promise<CopyBlobResult> {
-  assertPathname(toPathname);
   assertAccess(options);
+  assertPathname(toPathname);
+  assertNotAborted(options.abortSignal);
   const store = await getBlobStore();
   const info = await statBlob(resolvePathname(fromUrlOrPathname), store);
   const source = info ? await store.get(info.name) : null;

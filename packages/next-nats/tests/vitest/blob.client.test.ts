@@ -141,12 +141,13 @@ describe("server multipart", () => {
     const result = await put("mp/big.bin", data, { access: "public", multipart: true, onUploadProgress: (e) => events.push(e.percentage) });
     expect((await head(result.pathname)).size).toBe(data.length);
     expect(events.at(-1)).toBe(100);
-    expect(events.length).toBe(2);
+    expect(events[0]).toBe(0);
+    expect(events.length).toBe(3);
   });
 
   it("honors addRandomSuffix and allowOverwrite", async () => {
     const a = await createMultipartUploader("mp/s.txt", { access: "public", addRandomSuffix: true });
-    expect(a.key).toMatch(/^mp\/s-[a-z0-9]{10}\.txt$/);
+    expect(a.key).toMatch(/^mp\/s-[A-Za-z0-9]{30}\.txt$/);
     const part = await a.uploadPart(1, "1");
     await a.complete([part]);
     const again = await createMultipartUploader(a.key, { access: "public" });
@@ -209,7 +210,7 @@ describe("client tokens and uploads", () => {
       clientPayload: "suffix",
       onUploadProgress: (e) => progress.push(e.percentage),
     });
-    expect(result.pathname).toMatch(/^up\/hello-[a-z0-9]{10}\.txt$/);
+    expect(result.pathname).toMatch(/^up\/hello-[A-Za-z0-9]{30}\.txt$/);
     expect(progress.at(-1)).toBe(100);
     expect((await head(result.pathname)).size).toBe(12);
     const event = await waitFor(() => completed.find((c) => c.blob.pathname === result.pathname));
