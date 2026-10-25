@@ -7,3 +7,4 @@
 - KV operations are atomic per key only. Multi-key commands are not transactions. The [KV reference](../references/kv.md) lists the other differences from Redis.
 - Edge Config reads may lag a write by the time the watcher takes to deliver it. Use `consistentRead` when that matters.
 - Cron is at least once. See [cron deduplication](./cron-deduplication.md).
+- Queue: `receive` by `messageId`, `experimental_concurrencyKey` and v1 structured callbacks throw `BadRequestError`. Coalescing options are accepted and ignored, and `experimental_handoff` behaves like `afterSeconds`. See the [queue reference](../references/queue.md#differences-from-vercel-queues).
