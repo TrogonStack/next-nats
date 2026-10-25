@@ -15,3 +15,4 @@ defineConsumer<{ message: string; fail?: boolean }>({
     console.log("[demo] received", payload.message);
   },
 });
+await import("./realtime-services");
