@@ -1,5 +1,5 @@
 import "server-only";
-import { existsSync, readFileSync } from "node:fs";
+import { loadVercelJsonText, readVercelJsonFile } from "../vercel-json.js";
 import { join } from "node:path";
 import { getNats, getNatsConfig, onNatsShutdown } from "../connection.js";
 import { getLogger } from "../logger.js";
@@ -91,10 +91,9 @@ export function loadTriggers(config: VercelJson): QueueTrigger[] {
   return out;
 }
 
-export function readVercelJson(cwd = process.cwd()): VercelJson {
-  const file = join(cwd, "vercel.json");
-  if (!existsSync(file)) return {};
-  return JSON.parse(readFileSync(file, "utf8")) as VercelJson;
+export function readVercelJson(cwd?: string): VercelJson {
+  const text = cwd === undefined ? loadVercelJsonText() : readVercelJsonFile(join(cwd, "vercel.json"));
+  return text === undefined ? {} : (JSON.parse(text) as VercelJson);
 }
 
 export interface QueueWorkerOptions {

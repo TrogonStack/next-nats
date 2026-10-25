@@ -1,9 +1,8 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { getLogger } from "../logger.js";
 import { invalidArgument } from "../errors.js";
+import { loadVercelJsonText } from "../vercel-json.js";
 import { defaultCron } from "./default.js";
 import type { CronJob, CronRuntime } from "./runtime.js";
 
@@ -25,18 +24,18 @@ export interface VercelCronsOptions {
 
 const DOMAIN = "next-nats.cron";
 
-export function readVercelCrons(configPath = "vercel.json"): VercelCron[] {
-  const file = resolve(process.cwd(), configPath);
-  if (!existsSync(file)) return [];
+export function readVercelCrons(configPath?: string): VercelCron[] {
+  const text = loadVercelJsonText(configPath);
+  if (text === undefined) return [];
   let config: unknown;
   try {
-    config = JSON.parse(readFileSync(file, "utf8"));
+    config = JSON.parse(text);
   } catch (error) {
-    throw invalidArgument(DOMAIN, "INVALID_VERCEL_CONFIG", `Cannot parse ${configPath}: ${error instanceof Error ? error.message : String(error)}`);
+    throw invalidArgument(DOMAIN, "INVALID_VERCEL_CONFIG", `Cannot parse ${configPath ?? "vercel.json"}: ${error instanceof Error ? error.message : String(error)}`);
   }
   const crons = (config as { crons?: unknown } | null)?.crons;
   if (crons === undefined) return [];
-  if (!Array.isArray(crons)) throw invalidArgument(DOMAIN, "INVALID_VERCEL_CONFIG", `"crons" in ${configPath} must be an array`);
+  if (!Array.isArray(crons)) throw invalidArgument(DOMAIN, "INVALID_VERCEL_CONFIG", `"crons" in ${configPath ?? "vercel.json"} must be an array`);
   return crons.map((entry, index) => {
     const { path, schedule } = (entry ?? {}) as Partial<VercelCron>;
     if (typeof path !== "string" || !path.startsWith("/")) {
