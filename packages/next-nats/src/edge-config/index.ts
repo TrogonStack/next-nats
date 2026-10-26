@@ -1,12 +1,11 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { JetStreamApiCodes, JetStreamApiError } from "@nats-io/jetstream";
 import type { KV, KvWatchEntry } from "@nats-io/kv";
 import { codec } from "../codec.js";
 import { Code, SpecError } from "../errors.js";
 import { onNatsShutdown, openKv } from "../connection.js";
 import { decodeKey, encodeKey } from "../kv/key.js";
-import { isConflict } from "../kv/store.js";
+import { KvStore, type RawOp } from "../kv/store.js";
 
 export type EdgeConfigValue = string | number | boolean | null | { [x: string]: EdgeConfigValue } | EdgeConfigValue[];
 export type EdgeConfigItems = Record<string, EdgeConfigValue>;
@@ -318,15 +317,26 @@ export const digest: EdgeConfigClient["digest"] = (...args) => client().digest(.
 
 const ITEM_KEY = /^[A-Za-z0-9_-]{1,256}$/;
 
-async function preflight(kv: KV, items: EdgeConfigItemOperation[]): Promise<void> {
+const MAX_ATTEMPTS = 100;
+
+interface Observation {
+  rev: number;
+  exists: boolean;
+}
+
+async function plan(kv: KV, items: EdgeConfigItemOperation[]): Promise<RawOp[]> {
+  const observed = new Map<string, Observation>();
+  const staged = new Map<string, Uint8Array | null>();
   const present = new Map<string, boolean>();
   for (const item of items) {
     if (!ITEM_KEY.test(item.key)) {
       throw new EdgeConfigError(`Invalid item key "${item.key}"`, { reason: "INVALID_KEY" });
     }
-    if (!present.has(item.key)) {
+    if (!observed.has(item.key)) {
       const entry = await kv.get(encodeKey(item.key));
-      present.set(item.key, entry !== null && entry.operation === "PUT");
+      const seen = { rev: entry?.revision ?? 0, exists: entry !== null && entry.operation === "PUT" };
+      observed.set(item.key, seen);
+      present.set(item.key, seen.exists);
     }
     const exists = present.get(item.key)!;
     if (item.operation === "create" && exists) {
@@ -336,7 +346,9 @@ async function preflight(kv: KV, items: EdgeConfigItemOperation[]): Promise<void
       throw new EdgeConfigError(`Cannot ${item.operation} missing item "${item.key}"`, { code: Code.NOT_FOUND, reason: "ITEM_NOT_FOUND" });
     }
     present.set(item.key, item.operation !== "delete");
+    staged.set(item.key, item.operation === "delete" ? null : codec.encodeJson(item.value));
   }
+  return [...staged].map(([key, body]) => ({ key, body, expected: observed.get(key)!.rev }));
 }
 
 export async function updateEdgeConfigItems(
@@ -346,39 +358,12 @@ export async function updateEdgeConfigItems(
   const connection = parseConnectionString(connectionString ?? defaultConnectionString());
   if (!connection) throw new Error("@vercel/edge-config: Invalid connection string provided");
   const kv = await openKv(connection.id);
-  await preflight(kv, items);
-  for (const item of items) {
-    const key = encodeKey(item.key);
-    if (item.operation === "delete") {
-      const entry = await kv.get(key);
-      if (!entry || entry.operation !== "PUT") throw new EdgeConfigError(`Cannot delete missing item "${item.key}"`, { code: Code.NOT_FOUND, reason: "ITEM_NOT_FOUND" });
-      await kv.delete(key);
-      continue;
-    }
-    const data = codec.encodeJson(item.value);
-    if (item.operation === "upsert") {
-      await kv.put(key, data);
-      continue;
-    }
-    if (item.operation === "create") {
-      try {
-        await kv.create(key, data);
-      } catch (err) {
-        if (err instanceof JetStreamApiError && err.code === JetStreamApiCodes.StreamWrongLastSequence) {
-          throw new EdgeConfigError(`Item "${item.key}" already exists`, { code: Code.ALREADY_EXISTS, reason: "ITEM_EXISTS" });
-        }
-        throw err;
-      }
-      continue;
-    }
-    const entry = await kv.get(key);
-    if (!entry || entry.operation !== "PUT") throw new EdgeConfigError(`Cannot update missing item "${item.key}"`, { code: Code.NOT_FOUND, reason: "ITEM_NOT_FOUND" });
-    try {
-      await kv.update(key, data, entry.revision);
-    } catch (err) {
-      if (isConflict(err)) throw new EdgeConfigError(`Item "${item.key}" changed concurrently`, { code: Code.ABORTED, reason: "CONCURRENT_UPDATE" });
-      throw err;
-    }
+  const store = new KvStore({ bucket: connection.id });
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const ops = await plan(kv, items);
+    if (ops.length === 0 || (await store.batch(ops))) return { status: "ok" };
+    if (attempt > 2) await new Promise((r) => setTimeout(r, Math.random() * Math.min(5 * attempt, 50)));
   }
-  return { status: "ok" };
+  throw new EdgeConfigError("Edge config items changed concurrently", { code: Code.ABORTED, reason: "CONCURRENT_UPDATE" });
 }
+

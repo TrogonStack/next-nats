@@ -1,6 +1,7 @@
 import "server-only";
 import { globToRegExp, encodeKey } from "../kv/key.js";
 import { KvStore, UpstashError } from "../kv/store.js";
+import { Code } from "../errors.js";
 import type { Store } from "../kv/store.js";
 import { Transaction } from "../kv/transaction.js";
 import type { KvRecord, RecordKind } from "../kv/store.js";
@@ -177,7 +178,10 @@ export class Redis {
 
   private async transact<R>(fn: (redis: Redis) => Promise<R>): Promise<R> {
     const { store, auto, transaction } = this[internals];
-    if (transaction || !(await store.atomic)) return fn(this);
+    if (transaction) return fn(this);
+    if (!(await store.atomic)) {
+      throw new UpstashError("ERR", `bucket "${store.bucket}" does not allow atomic batches, so multi() and multi-key commands cannot run`, { code: Code.FAILED_PRECONDITION, reason: "ATOMIC_BATCH_UNAVAILABLE" });
+    }
     for (let attempt = 0; attempt < store.maxRetries; attempt++) {
       const tx = new Transaction(store as KvStore);
       const scoped: Redis = Object.create(this);

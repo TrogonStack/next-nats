@@ -1,5 +1,7 @@
 import "server-only";
 import type { ObjectInfo, ObjectStore } from "@nats-io/obj";
+import { JetStreamApiCodes, JetStreamApiError, JsHeaders, type JetStreamClient, type JetStreamManager } from "@nats-io/jetstream";
+import { headers } from "@nats-io/nats-core";
 import { getObjm } from "../connection.js";
 import { getBlobConfig } from "./config.js";
 import { assertAccess, assertBody, assertConsistentIfMatch, assertPathname } from "./validate.js";
@@ -551,6 +553,40 @@ export function matchesEtag(header: string, etag: string): boolean {
     .some((v) => v === "*" || v === etag);
 }
 
+interface ObjectStoreInternals {
+  js: JetStreamClient;
+  jsm: JetStreamManager;
+  stream: string;
+  rawInfo: (name: string) => Promise<(ObjectInfo & { revision: number }) | null>;
+  _metaSubject: (name: string) => string;
+  _chunkSubject: (nuid: string) => string;
+}
+
+async function deleteIfMatch(store: ObjectStore, pathname: string, etag: string): Promise<void> {
+  const internals = store as unknown as ObjectStoreInternals;
+  const info = await internals.rawInfo(pathname);
+  if (!info || info.deleted || etagOf(info) !== etag) throw new BlobPreconditionFailedError();
+  const { revision, nuid } = info;
+  const tombstone = { ...info, deleted: true, size: 0, chunks: 0, digest: "" };
+  const h = headers();
+  h.set(JsHeaders.RollupHdr, JsHeaders.RollupValueSubject);
+  try {
+    await internals.js.publish(internals._metaSubject(info.name), JSON.stringify(tombstone), {
+      headers: h,
+      expect: { lastSubjectSequence: revision },
+    });
+  } catch (err) {
+    if (
+      err instanceof JetStreamApiError &&
+      (err.code === JetStreamApiCodes.StreamWrongLastSequence || err.code === JetStreamApiCodes.StreamWrongLastSequenceUnknown)
+    ) {
+      throw new BlobPreconditionFailedError();
+    }
+    throw err;
+  }
+  await internals.jsm.streams.purge(internals.stream, { filter: internals._chunkSubject(nuid) });
+}
+
 export async function del(urlOrPathname: string | string[], options?: DeleteCommandOptions): Promise<void> {
   assertNotAborted(options?.abortSignal);
   const store = await getBlobStore();
@@ -558,11 +594,8 @@ export async function del(urlOrPathname: string | string[], options?: DeleteComm
   if (options?.ifMatch && targets.length > 1) throw new BlobError("ifMatch can only be used when deleting a single URL.");
   for (const target of targets) {
     const pathname = resolvePathname(target);
-    if (options?.ifMatch !== undefined) {
-      const info = await statBlob(pathname, store);
-      if (!info || etagOf(info) !== options.ifMatch) throw new BlobPreconditionFailedError();
-    }
-    await store.delete(pathname);
+    if (options?.ifMatch !== undefined) await deleteIfMatch(store, pathname, options.ifMatch);
+    else await store.delete(pathname);
   }
 }
 

@@ -36,7 +36,21 @@ export interface BatchOp {
   expected: number | undefined;
 }
 
+export interface RawOp {
+  key: string;
+  body: Uint8Array | null;
+  expected: number | undefined;
+  ttl?: string | undefined;
+}
+
+export interface ReadCheck {
+  key: string;
+  rev: number;
+}
+
 export const MAX_BATCH = 1000;
+
+const CHECK_KEY = "~check";
 
 export type Store = Pick<KvStore, "bucket" | "maxRetries" | "nativeTtl" | "atomic" | "kv" | "read" | "write" | "remove" | "mutate" | "allKeys">;
 
@@ -113,7 +127,7 @@ export class KvStore {
           atomic = true;
         } catch (error) {
           atomic = false;
-          getLogger().warning("KV bucket does not allow atomic batches; multi() and multi-key commands are not atomic", { bucket: config.name, error });
+          getLogger().warning("KV bucket does not allow atomic batches; multi() and multi-key commands will fail", { bucket: config.name, error });
         }
       }
       return { kv, nativeTtl, atomic };
@@ -194,35 +208,63 @@ export class KvStore {
     throw new UpstashError("ERR", `contention on key "${key}" exceeded ${this.maxRetries} retries`, { code: Code.ABORTED, reason: "CONTENTION" });
   }
 
-  async commit(ops: BatchOp[]): Promise<boolean> {
+  async commit(ops: BatchOp[], reads: ReadCheck[] = []): Promise<boolean> {
     if (ops.length === 0) return true;
-    if (ops.length > MAX_BATCH) {
-      throw new UpstashError("ERR", `transaction touches ${ops.length} keys, the limit is ${MAX_BATCH}`);
+    const total = ops.length + reads.length;
+    if (total > MAX_BATCH) {
+      throw new UpstashError("ERR", `transaction touches ${total} keys, the limit is ${MAX_BATCH}`);
     }
-    const { kv, nativeTtl, atomic } = await this.open();
+    const { kv, nativeTtl } = await this.open();
     const only = ops[0] as BatchOp;
-    if (ops.length === 1) {
+    if (total === 1) {
       if (only.rec) return this.write(only.key, only.rec, only.expected);
       if (only.expected !== undefined) return this.remove(only.key, only.expected);
       await kv.delete(encodeKey(only.key));
       return true;
     }
+    return this.batch(
+      ops.map((op) => ({
+        key: op.key,
+        expected: op.expected,
+        body: op.rec === null ? null : encoder.encode(JSON.stringify(op.rec)),
+        ttl: op.rec?.x !== undefined && nativeTtl ? `${Math.max(1, Math.ceil((op.rec.x - Date.now()) / 1000))}s` : undefined,
+      })),
+      reads,
+    );
+  }
+
+  async batch(ops: RawOp[], reads: ReadCheck[] = []): Promise<boolean> {
+    const total = ops.length + reads.length;
+    if (total > MAX_BATCH) {
+      throw new UpstashError("ERR", `transaction touches ${total} keys, the limit is ${MAX_BATCH}`);
+    }
+    const { atomic } = await this.open();
     if (!atomic) throw new UpstashError("ERR", "the server does not support atomic batch publish");
     const nc = await getNc();
     const id = crypto.randomUUID();
-    const last = ops.length - 1;
+    const last = total - 1;
     const replies: Promise<unknown>[] = [];
-    for (const [i, op] of ops.entries()) {
+    for (let i = 0; i < total; i++) {
       const h = headers();
       h.set("Nats-Batch-Id", id);
       h.set("Nats-Batch-Sequence", String(i + 1));
-      if (op.expected !== undefined) h.set("Nats-Expected-Last-Subject-Sequence", String(op.expected));
-      if (op.rec === null) h.set("KV-Operation", "DEL");
-      else if (nativeTtl && op.rec.x !== undefined) {
-        h.set("Nats-TTL", `${Math.max(1, Math.ceil((op.rec.x - Date.now()) / 1000))}s`);
+      let subject: string;
+      let data: Uint8Array;
+      const op = ops[i];
+      if (op) {
+        if (op.expected !== undefined) h.set("Nats-Expected-Last-Subject-Sequence", String(op.expected));
+        if (op.body === null) h.set("KV-Operation", "DEL");
+        else if (op.ttl !== undefined) h.set("Nats-TTL", op.ttl);
+        subject = `$KV.${this.bucket}.${encodeKey(op.key)}`;
+        data = op.body ?? new Uint8Array();
+      } else {
+        const read = reads[i - ops.length] as ReadCheck;
+        h.set("Nats-Expected-Last-Subject-Sequence", String(read.rev));
+        h.set("Nats-Expected-Last-Subject-Sequence-Subject", `$KV.${this.bucket}.${encodeKey(read.key)}`);
+        h.set("KV-Operation", "DEL");
+        subject = `$KV.${this.bucket}.${CHECK_KEY}`;
+        data = new Uint8Array();
       }
-      const subject = `$KV.${this.bucket}.${encodeKey(op.key)}`;
-      const data = op.rec === null ? new Uint8Array() : encoder.encode(JSON.stringify(op.rec));
       if (i < last) {
         nc.publish(subject, data, { headers: h });
         continue;
@@ -238,7 +280,7 @@ export class KvStore {
       }
       throw new UpstashError("ERR", `atomic batch rejected: ${ack.error.description}`, { code: Code.ABORTED });
     }
-    return ack.count === ops.length;
+    return ack.count === total;
   }
 
   async allKeys(): Promise<string[]> {
