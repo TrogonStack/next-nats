@@ -1,4 +1,4 @@
-import type { BatchOp, KvRecord, KvStore, Store } from "./store.js";
+import type { BatchOp, KvRecord, KvStore, ReadCheck, Store } from "./store.js";
 
 interface Observed {
   rev: number;
@@ -89,6 +89,8 @@ export class Transaction implements Store {
 
   flush(): Promise<boolean> {
     const ops: BatchOp[] = [...this.pending].map(([key, { rec, expected }]) => ({ key, rec, expected }));
-    return this.base.commit(ops);
+    const reads: ReadCheck[] = [];
+    for (const [key, { rev }] of this.observed) if (!this.pending.has(key)) reads.push({ key, rev });
+    return this.base.commit(ops, reads);
   }
 }
