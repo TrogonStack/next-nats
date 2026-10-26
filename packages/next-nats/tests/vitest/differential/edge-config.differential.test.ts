@@ -37,7 +37,7 @@ function realSubject(id: string, seed: Record<string, FakeValue> = {}): Subject 
   return {
     name: "real",
     get: (k, o) => client.get(k as string, o),
-    getAll: (k, o) => client.getAll(k as string[] | undefined, o),
+    getAll: (k, o) => client.getAll<Record<string, unknown>>(k as string[] | undefined, o),
     has: (k, o) => client.has(k as string, o),
     digest: (o) => client.digest(o),
     async write(items) {
@@ -59,7 +59,7 @@ async function oursSubject(id: string, seed: Record<string, FakeValue> = {}): Pr
   return {
     name: "ours",
     get: (k, o) => client.get(k as string, o),
-    getAll: (k, o) => client.getAll(k as string[] | undefined, o),
+    getAll: (k, o) => client.getAll<Record<string, unknown>>(k as string[] | undefined, o),
     has: (k, o) => client.has(k as string, o),
     digest: (o) => client.digest(o),
     async write(items) {
@@ -427,7 +427,7 @@ describe("edge config generated operation sequences", () => {
           const after = await Promise.all([r.digest(), o.digest()]);
           if (ro === "failed") expect(after).toEqual(before);
           [r, o].forEach((_, i) => {
-            const canonical = JSON.stringify(Object.entries(stateR).sort(([x], [y]) => (x < y ? -1 : 1)));
+            const canonical = JSON.stringify(Object.entries(stateR as Record<string, unknown>).sort(([x], [y]) => (x < y ? -1 : 1)));
             const known = digests[i]!.get(after[i]!);
             expect(known === undefined || known === canonical, "digest maps to one state").toBe(true);
             digests[i]!.set(after[i]!, canonical);

@@ -59,8 +59,8 @@ export const scenarios: Scenario[] = [
         ["buffer", Buffer.from(bytes)],
         ["uint8", bytes],
         ["arraybuffer", bytes.buffer.slice(0) as ArrayBuffer],
-        ["blob", new Blob([bytes], { type: "application/x-custom" })],
-        ["file", new File([bytes], "ignored-name.dat", { type: "application/x-file" })],
+        ["blob", new Blob([new Uint8Array(bytes)], { type: "application/x-custom" })],
+        ["file", new File([new Uint8Array(bytes)], "ignored-name.dat", { type: "application/x-file" })],
         ["readable", Readable.from([Buffer.from(bytes)])],
         ["web-stream", chunkedStream([bytes.slice(0, 1000), bytes.slice(1000)])],
       ];

@@ -376,7 +376,7 @@ export class FakeVercelQueue {
     let status = 0;
     let responseBody = "";
     try {
-      const response = await fetch(trigger.url, { method: "POST", headers: requestHeaders, body: message.body, redirect: "manual" });
+      const response = await fetch(trigger.url, { method: "POST", headers: requestHeaders, body: new Uint8Array(message.body), redirect: "manual" });
       status = response.status;
       responseBody = await response.text();
     } catch (error) {

@@ -435,7 +435,7 @@ describe("differential: push mode callbacks", () => {
         const text = await response.clone().text();
         const headers = new Headers(init?.headers);
         dispatches.push({ status: response.status, body: text, deliveryCount: Number(headers.get("ce-vqsdeliverycount")) });
-        for (const key of headers.keys()) if (key.startsWith("ce-vqs")) ceHeaders.add(key);
+        headers.forEach((_, key) => { if (key.startsWith("ce-vqs")) ceHeaders.add(key); });
         return response;
       };
       const worker = ours.startQueueWorker({
