@@ -127,7 +127,7 @@ export class KvStore {
           atomic = true;
         } catch (error) {
           atomic = false;
-          getLogger().warning("KV bucket does not allow atomic batches; multi() and multi-key commands are not atomic", { bucket: config.name, error });
+          getLogger().warning("KV bucket does not allow atomic batches; multi() and multi-key commands will fail", { bucket: config.name, error });
         }
       }
       return { kv, nativeTtl, atomic };
