@@ -36,6 +36,13 @@ export interface BatchOp {
   expected: number | undefined;
 }
 
+export interface RawOp {
+  key: string;
+  body: Uint8Array | null;
+  expected: number | undefined;
+  ttl?: string | undefined;
+}
+
 export interface ReadCheck {
   key: string;
   rev: number;
@@ -207,7 +214,7 @@ export class KvStore {
     if (total > MAX_BATCH) {
       throw new UpstashError("ERR", `transaction touches ${total} keys, the limit is ${MAX_BATCH}`);
     }
-    const { kv, nativeTtl, atomic } = await this.open();
+    const { kv, nativeTtl } = await this.open();
     const only = ops[0] as BatchOp;
     if (total === 1) {
       if (only.rec) return this.write(only.key, only.rec, only.expected);
@@ -215,6 +222,23 @@ export class KvStore {
       await kv.delete(encodeKey(only.key));
       return true;
     }
+    return this.batch(
+      ops.map((op) => ({
+        key: op.key,
+        expected: op.expected,
+        body: op.rec === null ? null : encoder.encode(JSON.stringify(op.rec)),
+        ttl: op.rec?.x !== undefined && nativeTtl ? `${Math.max(1, Math.ceil((op.rec.x - Date.now()) / 1000))}s` : undefined,
+      })),
+      reads,
+    );
+  }
+
+  async batch(ops: RawOp[], reads: ReadCheck[] = []): Promise<boolean> {
+    const total = ops.length + reads.length;
+    if (total > MAX_BATCH) {
+      throw new UpstashError("ERR", `transaction touches ${total} keys, the limit is ${MAX_BATCH}`);
+    }
+    const { atomic } = await this.open();
     if (!atomic) throw new UpstashError("ERR", "the server does not support atomic batch publish");
     const nc = await getNc();
     const id = crypto.randomUUID();
@@ -229,12 +253,10 @@ export class KvStore {
       const op = ops[i];
       if (op) {
         if (op.expected !== undefined) h.set("Nats-Expected-Last-Subject-Sequence", String(op.expected));
-        if (op.rec === null) h.set("KV-Operation", "DEL");
-        else if (nativeTtl && op.rec.x !== undefined) {
-          h.set("Nats-TTL", `${Math.max(1, Math.ceil((op.rec.x - Date.now()) / 1000))}s`);
-        }
+        if (op.body === null) h.set("KV-Operation", "DEL");
+        else if (op.ttl !== undefined) h.set("Nats-TTL", op.ttl);
         subject = `$KV.${this.bucket}.${encodeKey(op.key)}`;
-        data = op.rec === null ? new Uint8Array() : encoder.encode(JSON.stringify(op.rec));
+        data = op.body ?? new Uint8Array();
       } else {
         const read = reads[i - ops.length] as ReadCheck;
         h.set("Nats-Expected-Last-Subject-Sequence", String(read.rev));

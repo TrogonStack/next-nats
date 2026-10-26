@@ -25,8 +25,8 @@ async function afterFirstReads(key: string, times: number, hook: (n: number) => 
   const kv = await openKv(BUCKET);
   const original = kv.get.bind(kv);
   let fired = 0;
-  vi.spyOn(kv, "get").mockImplementation(async (k: string, ...rest: [] | [number]) => {
-    const entry = await original(k, ...(rest as []));
+  vi.spyOn(kv, "get").mockImplementation(async (k: string, opts?: { revision: number }) => {
+    const entry = await original(k, opts);
     if (fired < times && k === encodeKey(key)) {
       fired++;
       await hook(fired);
