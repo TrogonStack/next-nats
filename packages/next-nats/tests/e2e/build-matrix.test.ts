@@ -13,9 +13,9 @@ interface Mirror {
 const MIRRORS: Mirror[] = [
   { specifier: "@vercel/kv", ours: "next-nats.kv", real: "KV_REST_API_URL", importedDirectlyByDemo: true },
   { specifier: "@upstash/redis", ours: "next-nats.kv", real: "UPSTASH_REDIS_REST_URL", importedDirectlyByDemo: true },
-  { specifier: "@upstash/ratelimit", ours: "next-nats.ratelimit", real: "denyList", importedDirectlyByDemo: false },
+  { specifier: "@upstash/ratelimit", ours: "Ratelimit enableProtection", real: "denyList", importedDirectlyByDemo: false },
   { specifier: "@vercel/blob", ours: "next-nats.blob", real: "vercel.com/api/blob", importedDirectlyByDemo: true },
-  { specifier: "@vercel/edge-config", ours: "next-nats.edge-config", real: "edge-config.vercel.com", importedDirectlyByDemo: true },
+  { specifier: "@vercel/edge-config", ours: "next-nats.edge-config", real: "x-edge-config-digest", importedDirectlyByDemo: true },
   { specifier: "@vercel/queue", ours: "next-nats.queue", real: "x-vercel-queue", importedDirectlyByDemo: true },
 ];
 
