@@ -1,6 +1,12 @@
 # next-nats
 
-Vercel platform primitives for self-hosted Next.js, running on NATS and JetStream. One `nats-server` replaces the managed KV, Blob, Queues, Edge Config, cache and cron services, and every Next.js replica shares the same state.
+**next-nats runs the Vercel platform features your Next.js app depends on, on a NATS server you operate.** It brings Redis, KV, Blob, Queues, Edge Config, the Data Cache and Cron Jobs to self-hosted Next.js through NATS and JetStream.
+
+**Each subpath mirrors the API of the package Vercel promotes, so moving an app off Vercel means changing import specifiers, not application code.** `withNats` performs that swap at build time, so one codebase builds for Vercel or for your own infrastructure. Every Next.js replica connects to the same `nats-server` and shares cache, storage and queue state.
+
+**Self-hosting Next.js usually means giving up the managed services the app was written against, or stitching together Redis, S3, a queue and a cron daemon to replace them.** A single NATS deployment covers all of them with one connection, one set of credentials and one thing to operate. Differential tests run the real Vercel and Upstash clients side by side with these implementations to keep the behavior matched.
+
+**It is for teams that want to run Next.js on their own servers, containers or Kubernetes without rewriting code built for Vercel.** It also suits teams that already run NATS and want their web tier on the same messaging backbone, and anyone who wants to keep the option of deploying the same app to Vercel later.
 
 ```ts
 // next.config.ts
