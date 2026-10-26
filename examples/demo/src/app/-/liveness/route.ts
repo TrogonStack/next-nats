@@ -1,7 +1,7 @@
 import { connection } from "next/server";
 import { GET as liveness } from "@trogonstack/next-nats/health/liveness";
 
-export async function GET(...args: Parameters<typeof liveness>) {
+export async function GET(request: Request) {
   await connection();
-  return liveness(...args);
+  return liveness(request);
 }

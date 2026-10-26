@@ -5,3 +5,4 @@ dist
 .env.local
 .trogonai
 next-env.d.ts
+.next-e2e

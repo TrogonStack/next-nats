@@ -18,6 +18,9 @@
 - Vercel cron accepts at most one hundred jobs, five field UTC expressions without day or month names, and no job that sets both day of month and day of week. `registerVercelCrons` rejects the same inputs. Hobby plan limits (once per day, per-hour precision) are not enforced.
 - Queue message delivery counts for delayed messages are kept in memory and restart from the stored count after a process restart.
 
+- Right after the NATS server restarts, the app reports ready as soon as its connection is back, while the first JetStream calls can still time out for a few seconds. Cache invalidation and enqueue calls made in that window fail with a 500 and succeed on retry.
+- A `next build --webpack` type-checks route handlers more strictly than Turbopack. Handlers must declare a plain `(request: Request)` signature instead of spreading the parameters of a wrapped handler.
+
 ## Parity assumptions
 
 The differential suites under `packages/next-nats/tests/vitest/differential` run the real SDK against a local fake of the Vercel service and this package against NATS. The fakes decide the following where the SDK source and the Vercel documentation are silent.
@@ -72,3 +75,5 @@ The differential suites run the real `@upstash/redis`, `@vercel/kv` and `@upstas
 - Ratelimit stores one record per identifier where the real library uses several keys. Only the limiter results are comparable, and they match.
 - The real `resetUsedTokens` deletes with a `SCAN` of `identifier:*`, which can remove keys of other identifiers sharing the prefix. Ours removes one identifier.
 - Ratelimit scenarios fake `Date` only. Key expiry on the real Redis is emulated by deleting keys the model considers expired, with 1 s granularity and a 1.5 s slack.
+- The end-to-end suite expects Vercel cron requests to carry `user-agent: vercel-cron/1.0`, `x-vercel-cron-schedule` and `authorization: Bearer <CRON_SECRET>`, because that is what the library sends. It is not checked against Vercel itself.
+- A build with `VERCEL=1` is expected to bundle the real `@vercel/*` and `@upstash/*` packages and to install no NATS cache handler. The suite asserts that the NATS implementation is absent only for `@upstash/ratelimit`, because the demo also imports some `@trogonstack/next-nats` subpaths directly (for example the health routes and Edge Config updates), so those markers appear in any build.
