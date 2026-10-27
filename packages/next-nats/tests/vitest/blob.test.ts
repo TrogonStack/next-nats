@@ -27,7 +27,7 @@ function sha(bytes: Uint8Array): string {
 }
 
 beforeAll(async () => {
-  await connectNats({ servers: process.env.NATS_SERVERS, name: "next-nats-blob-test" });
+  await connectNats({ servers: process.env.NATS_URL, name: "next-nats-blob-test" });
   configureBlob({ bucket, baseUrl: "http://localhost:3000/blob", secret: "test-secret" });
 });
 

@@ -3,6 +3,7 @@ import { AckPolicy, JetStreamApiCodes, JetStreamApiError, type ConsumerConfig, t
 import { headers as natsHeaders } from "@nats-io/nats-core";
 import { codec } from "./codec.js";
 import { getNatsConfig, getNats, onNatsShutdown } from "./connection.js";
+import { untilStreamExists } from "./streams.js";
 import { durableName, streamName, subject, type DurableName, type StreamName, type Subject } from "./values.js";
 
 const NANOS_PER_MS = 1_000_000;
@@ -55,6 +56,7 @@ export function defineConsumer<T = unknown>(def: ConsumerDefinition<T>): ActiveC
   const filters = def.filterSubjects?.map(subject);
 
   let stopped = false;
+  const abort = new AbortController();
   let iterator: ConsumerMessages | undefined;
   let done: Promise<void> = Promise.resolve();
 
@@ -125,6 +127,8 @@ export function defineConsumer<T = unknown>(def: ConsumerDefinition<T>): ActiveC
     let retry = 1_000;
     while (!stopped) {
       try {
+        await untilStreamExists(stream, { subjects: filters, signal: abort.signal });
+        if (stopped) break;
         const { js } = await getNats();
         if (def.provision ?? true) await provision();
         const consumer = await js.consumers.get(stream, durable);
@@ -152,13 +156,14 @@ export function defineConsumer<T = unknown>(def: ConsumerDefinition<T>): ActiveC
     durable,
     async stop() {
       stopped = true;
+      abort.abort();
       registry().delete(key);
       await iterator?.close().catch(() => undefined);
       await done.catch(() => undefined);
     },
   };
   registry().set(key, active);
-  onNatsShutdown(() => active.stop());
+  onNatsShutdown(() => active.stop(), { stage: "consumers" });
   return active;
 }
 

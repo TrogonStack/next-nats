@@ -6,7 +6,7 @@ import { startCronCapture, type CronCapture } from "./support/cron-capture.js";
 import { stripTags, submitForm, testId } from "./support/html.js";
 import { isolatedEnv, unique } from "./support/isolation.js";
 import { openSse } from "./support/sse.js";
-import { startServer, waitUntil, type RunningServer } from "./support/server.js";
+import { settled, startServer, waitUntil, type RunningServer } from "./support/server.js";
 
 const PORTS: Record<SelfHostedVariant, { app: number; cron: number }> = {
   turbopack: { app: 3841, cron: 3843 },
@@ -124,6 +124,7 @@ describe.each(SELF_HOSTED_VARIANTS)("%s next start", (variant) => {
     it.each(["sliding", "fixed", "bucket"])("blocks the sixth hit through the %s server action", async (algo) => {
       const identifier = unique(algo);
       const lines: string[] = [];
+      if (algo === "fixed") await new Promise((resolve) => setTimeout(resolve, 10_000 - (Date.now() % 10_000) + 50));
       for (let attempt = 0; attempt < 6; attempt++) {
         const html = await submitForm({ origin: server.origin, path: "/ratelimit", button: "Hit it", values: { algo, identifier } });
         lines.push(stripTags(html.match(/<pre>([\s\S]*?)<\/pre>/)?.[1] ?? ""));
@@ -246,7 +247,6 @@ describe.each(SELF_HOSTED_VARIANTS)("%s next start", (variant) => {
       const sse = await openSse(`${server.origin}/api/realtime/cursors`);
       try {
         const id = unique("cursor");
-        await new Promise((resolve) => setTimeout(resolve, 300));
         const response = await fetch(`${server.origin}/api/realtime/cursors`, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -273,11 +273,12 @@ describe.each(SELF_HOSTED_VARIANTS)("%s next start", (variant) => {
 
   describe("cache", () => {
     it("serves one use cache entry until updateTag expires it", async () => {
-      const first = testId(await text(server, "/cache"), "nonce");
+      const nonce = async () => testId(await text(server, "/cache"), "nonce");
+      const first = await settled(nonce, "the use cache entry to be stored");
       expect(first).toBeTruthy();
-      expect(testId(await text(server, "/cache"), "nonce")).toBe(first);
       await submitForm({ origin: server.origin, path: "/cache", button: "updateTag" });
-      const second = await eventually(async () => testId(await text(server, "/cache"), "nonce"), (nonce) => nonce !== first, "a fresh use cache entry");
+      await eventually(nonce, (value) => value !== first, "a fresh use cache entry");
+      const second = await settled(nonce, "the fresh use cache entry to be stored");
       expect(second).not.toBe(first);
       expect(testId(await text(server, "/cache"), "nonce")).toBe(second);
     });
@@ -290,11 +291,12 @@ describe.each(SELF_HOSTED_VARIANTS)("%s next start", (variant) => {
     });
 
     it("serves one fetch cache entry until updateTag expires it", async () => {
-      const first = testId(await text(server, "/cache/isr"), "isr-nonce");
+      const nonce = async () => testId(await text(server, "/cache/isr"), "isr-nonce");
+      const first = await settled(nonce, "the fetch cache entry to be stored");
       expect(first).toBeTruthy();
-      expect(testId(await text(server, "/cache/isr"), "isr-nonce")).toBe(first);
       await submitForm({ origin: server.origin, path: "/cache/isr", button: "updateTag demo-isr" });
-      const second = await eventually(async () => testId(await text(server, "/cache/isr"), "isr-nonce"), (nonce) => nonce !== first, "a fresh fetch cache entry");
+      await eventually(nonce, (value) => value !== first, "a fresh fetch cache entry");
+      const second = await settled(nonce, "the fresh fetch cache entry to be stored");
       expect(second).not.toBe(first);
     });
   });

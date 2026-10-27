@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createRequire } from "node:module";
-import { DEMO_ROOT, distDirOf, natsServers, type BuildVariant } from "./env.js";
+import { DEMO_ROOT, distDirOf, natsServers, natsWsServers, type BuildVariant } from "./env.js";
 
 export interface RunningServer {
   readonly origin: string;
@@ -31,7 +31,8 @@ export async function startServer({ variant, port, env = {} }: StartServerOption
       ...process.env,
       ...SHARED_ENV,
       NODE_ENV: "production",
-      NATS_SERVERS: natsServers(),
+      NATS_URL: natsServers(),
+      NATS_WS_SERVERS: natsWsServers(),
       NATS_WORKERS: "true",
       NEXT_DIST_DIR: distDirOf(variant),
       PORT: String(port),
@@ -82,4 +83,24 @@ export async function waitUntil(check: () => Promise<boolean> | boolean, timeout
     if (Date.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
+}
+
+export async function settled<T>(read: () => Promise<T>, what: string, { timeoutMs = 15_000, intervalMs = 100, quietMs = 1_000, accept = () => true }: { timeoutMs?: number; intervalMs?: number; quietMs?: number; accept?: (value: T) => boolean } = {}): Promise<T> {
+  let current = await read();
+  let since = Date.now();
+  await waitUntil(
+    async () => {
+      const next = await read();
+      if (!Object.is(next, current)) {
+        current = next;
+        since = Date.now();
+        return false;
+      }
+      return Date.now() - since >= quietMs && accept(current);
+    },
+    timeoutMs,
+    what,
+    intervalMs,
+  );
+  return current;
 }

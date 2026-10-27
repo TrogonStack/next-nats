@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { BlobNotFoundError, BlobError } from "../../src/blob/errors.js";
-import { resolveConfig } from "../../src/config.js";
+import { natsConfig } from "../../src/config.js";
 import { EdgeConfigError } from "../../src/edge-config/index.js";
 import {
   Code,
@@ -131,7 +131,7 @@ describe("migrated errors keep their compat surface", () => {
       expect((error as SpecError).spec).toMatchObject({ code: Code.INVALID_ARGUMENT, reason: "INVALID_SUBJECT" });
     }
     try {
-      resolveConfig({}, { NATS_TRANSPORT: "udp" });
+      natsConfig({ transport: "udp" as "tcp" });
     } catch (error) {
       expect((error as SpecError).spec).toMatchObject({ domain: "next-nats.config", reason: "INVALID_TRANSPORT" });
       expect((error as SpecError).toPublic().message).toBe("An internal error occurred");

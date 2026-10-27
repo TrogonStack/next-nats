@@ -15,7 +15,11 @@ export function composeProject(): string {
 }
 
 export function natsServers(): string {
-  return process.env.NATS_SERVERS ?? `nats://nats.${composeProject()}.orb.local:4222`;
+  return process.env.NATS_URL ?? `nats://nats.${composeProject()}.orb.local:4222`;
+}
+
+export function natsWsServers(): string {
+  return process.env.NATS_WS_URL ?? `ws://nats.${composeProject()}.orb.local:8080`;
 }
 
 export function distDirOf(variant: BuildVariant): string {

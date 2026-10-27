@@ -6,7 +6,7 @@ import { Redis } from "../../src/redis/index.js";
 const BUCKET = `nonatomic_${Math.random().toString(36).slice(2, 8)}`;
 
 beforeAll(async () => {
-  await connectNats({ servers: process.env.NATS_SERVERS, name: "next-nats-non-atomic-test" });
+  await connectNats({ servers: process.env.NATS_URL, name: "next-nats-non-atomic-test" });
 });
 
 afterAll(async () => {

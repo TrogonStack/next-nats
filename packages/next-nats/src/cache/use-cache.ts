@@ -65,24 +65,26 @@ export class NatsUseCacheHandler implements CacheHandler {
 
   async set(cacheKey: string, pendingEntry: Promise<CacheEntry>): Promise<void> {
     let resolvePending: () => void = () => undefined;
-    this.pending.set(
-      cacheKey,
-      new Promise<void>((resolve) => {
-        resolvePending = resolve;
-      }),
-    );
+    const earlier = this.pending.get(cacheKey);
+    const mine = new Promise<void>((resolve) => {
+      resolvePending = resolve;
+    });
+    this.pending.set(cacheKey, mine);
     try {
       const entry = await pendingEntry;
       if (!process.env.__NEXT_DEV_SERVER && entry.expire === 0) return;
       const body = await streamToBytes(entry.value);
       const { value: _value, ...meta } = entry;
       const { entries } = await this.open();
+      await earlier;
+      const stored = await entries.get(cacheKey);
+      if (stored && stored.meta.timestamp > meta.timestamp) return;
       await entries.set(cacheKey, meta, body);
     } catch (err) {
       warnThrottled("cache.set", "cache set failed, entry not stored", { cacheKey, error: err });
     } finally {
       resolvePending();
-      this.pending.delete(cacheKey);
+      if (this.pending.get(cacheKey) === mine) this.pending.delete(cacheKey);
     }
   }
 

@@ -6,7 +6,7 @@ import { Redis } from "../../src/redis/index.js";
 const BUCKET = `txn_${Math.random().toString(36).slice(2, 8)}`;
 
 beforeAll(async () => {
-  await connectNats({ servers: process.env.NATS_SERVERS, name: "next-nats-transaction-test" });
+  await connectNats({ servers: process.env.NATS_URL, name: "next-nats-transaction-test" });
 });
 
 afterAll(async () => {

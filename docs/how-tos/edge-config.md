@@ -14,7 +14,7 @@ Reads come from an in-process mirror kept current by a watcher, so they do not w
 
 ## Choose the bucket
 
-Set `EDGE_CONFIG` to `edge-config:id=<bucket>`. When it is unset, the default client uses `NEXT_NATS_EDGE_CONFIG_BUCKET` (default `edge-config`). The NATS servers come from `NATS_SERVERS`.
+Set `EDGE_CONFIG` to `edge-config:id=<bucket>`. When it is unset, the default client uses `NEXT_NATS_EDGE_CONFIG_BUCKET` (default `edge-config`). The NATS servers come from `NATS_URL`.
 
 ## Read the latest value
 

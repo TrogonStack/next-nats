@@ -59,3 +59,12 @@ export function createLivenessHandler(options: LivenessOptions = {}) {
     return respond(livenessChecks(state()), request, "not alive");
   };
 }
+
+export {
+  collectDiagnosticsBody,
+  createDiagnosticsHandler,
+  DEFAULT_RTT_TIMEOUT_MS,
+  type DiagnosticsBody,
+  type DiagnosticsOptions,
+  type JetStreamDiagnostics,
+} from "./diagnostics-handler.js";

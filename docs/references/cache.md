@@ -51,7 +51,7 @@ The value is stored in `env.NEXT_NATS_VERCEL_JSON` and inlined into the server b
 | --- | --- |
 | `createUseCacheHandler(options?)`, `NatsUseCacheHandler` | Handler for `'use cache'` |
 | `createIncrementalCacheHandler(options?)`, `NatsIncrementalCacheHandler` | Handler for ISR and fetch caching |
-| `getBackend(kind, options?)`, `bucketNames(namespace)` | Shared stores per namespace. Buckets are `<namespace>_data`, `<namespace>_isr`, `<namespace>_tags` and `<namespace>_large` |
+| `getBackend(kind, options?)`, `bucketNames(namespace)` | Shared stores per namespace. One KV bucket `<namespace>_cache` holds `use cache` entries (`e.data.` keys), ISR entries (`e.isr.` keys) and tags (`t.` keys). Bodies too large for a message go to the Object Store bucket `<namespace>_large`, created on first use |
 | `EntryStore`, `hashKey` | Entry store with LRU front, watcher and Object Store spill |
 | `TagStore`, `tagKey` | Tag timestamps mirrored from a KV bucket |
 | `resolveCacheOptions`, `cacheOptionsToEnv`, `CACHE_ENV` | Option resolution |

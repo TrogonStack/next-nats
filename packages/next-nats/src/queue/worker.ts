@@ -234,7 +234,7 @@ export function startQueueWorker(options: QueueWorkerOptions = {}): QueueWorker 
       await Promise.all(loops.map((loop) => loop.stop()));
     },
   };
-  onNatsShutdown(() => worker.stop());
+  onNatsShutdown(() => worker.stop(), { stage: "consumers" });
   return worker;
 }
 

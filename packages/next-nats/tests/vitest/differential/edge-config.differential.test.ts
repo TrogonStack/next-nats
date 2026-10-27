@@ -101,7 +101,7 @@ async function errorOf(fn: () => Promise<unknown>): Promise<{ name: string; mess
 
 beforeAll(async () => {
   await fake.start();
-  await connectNats({ servers: process.env.NATS_SERVERS, name: "next-nats-ec-differential" });
+  await connectNats({ servers: process.env.NATS_URL, name: "next-nats-ec-differential" });
 });
 
 afterAll(async () => {

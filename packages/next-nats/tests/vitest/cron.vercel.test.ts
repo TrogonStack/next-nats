@@ -26,7 +26,7 @@ let server: Server;
 let baseUrl: string;
 
 beforeAll(async () => {
-  await connectNats({ servers: process.env.NATS_SERVERS, workers: true, name: "next-nats-cron-vercel-test" });
+  await connectNats({ servers: process.env.NATS_URL, workers: true, name: "next-nats-cron-vercel-test" });
   server = createServer((req: IncomingMessage, res) => {
     hits.push({ method: req.method, url: req.url, userAgent: req.headers["user-agent"], authorization: req.headers.authorization, schedule: req.headers["x-vercel-cron-schedule"] });
     res.end("ok");

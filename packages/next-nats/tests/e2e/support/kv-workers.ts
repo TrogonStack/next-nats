@@ -19,7 +19,7 @@ export interface KvWorkerOptions {
 export function runKvWorker({ bucket, source, target, operations }: KvWorkerOptions): Promise<WorkerReport> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ["--conditions=react-server", WORKER, source, target, String(operations)], {
-      env: { ...process.env, NATS_SERVERS: natsServers(), NEXT_NATS_KV_BUCKET: bucket, NODE_ENV: "production" },
+      env: { ...process.env, NATS_URL: natsServers(), NEXT_NATS_KV_BUCKET: bucket, NODE_ENV: "production" },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";

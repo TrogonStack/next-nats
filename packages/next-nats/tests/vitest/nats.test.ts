@@ -20,7 +20,7 @@ async function waitFor(fn: () => boolean, ms = 15_000) {
 }
 
 beforeAll(async () => {
-  await connectNats({ servers: process.env.NATS_SERVERS, workers: true, name: "next-nats-test" });
+  await connectNats({ servers: process.env.NATS_URL, workers: true, name: "next-nats-test" });
   await ensureStream({ name: STREAM, subjects: [`${SUBJ}.>`, `dlq.${run}`] });
 });
 

@@ -11,7 +11,7 @@ export default defineConfig({
     hookTimeout: 180_000,
     env: {
       NEXT_NATS_COMPOSE_PROJECT: composeProject,
-      NATS_SERVERS: process.env.NATS_SERVERS ?? `nats://nats.${composeProject}.orb.local:4222`,
+      NATS_URL: process.env.NATS_URL ?? `nats://nats.${composeProject}.orb.local:4222`,
     },
     alias: { "server-only": new URL("../vitest/server-only.ts", import.meta.url).pathname },
   },

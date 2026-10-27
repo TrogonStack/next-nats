@@ -17,7 +17,6 @@ export const calculator = defineService({
   name: "calculator",
   version: "1.0.0",
   description: "Arithmetic over NATS request/reply",
-  instances: 3,
   endpoints: {
     add: endpoint({
       input: parseOperands,
@@ -38,7 +37,7 @@ export const probe = defineService({
   version: "1.0.0",
   description: "Broadcast endpoint answered by every instance",
   queue: "",
-  instances: 3,
+  instances: 2,
   endpoints: {
     whoami: endpoint({
       handler: (_: void, ctx) => ({ instance: ctx.instance, pid: process.pid, at: new Date().toISOString() }),

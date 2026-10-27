@@ -66,7 +66,7 @@ describe("handlers", () => {
     expect(down.status).toBe(503);
     expect(await down.text()).toBe("not ready");
 
-    await connectNats({ servers: process.env.NATS_SERVERS });
+    await connectNats({ servers: process.env.NATS_URL });
     expect(ready().status).toBe(200);
 
     const closing = closeNats();

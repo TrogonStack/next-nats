@@ -1,6 +1,6 @@
 import { inspect } from "node:util";
 import { describe, expect, it } from "vitest";
-import { authFromEnv, resolveConfig } from "../../src/config.js";
+import { authFromEnv, natsConfig, natsConfigFromEnv } from "../../src/config.js";
 import { Secret, secretFromEnv } from "../../src/secret.js";
 
 describe("secret", () => {
@@ -34,23 +34,24 @@ describe("secret", () => {
 
   it("applies the syntax to every auth secret in env", () => {
     expect(authFromEnv({ NATS_TOKEN: "secret:nats:token:t0k" })).toEqual({ kind: "token", token: Secret.of("t0k") });
-    expect(authFromEnv({ NATS_USER: "u", NATS_PASS: "secret:nats:pw:p" })).toEqual({
+    expect(authFromEnv({ NATS_USER: "u", NATS_PASSWORD: "secret:nats:pw:p" })).toEqual({
       kind: "userpass",
       user: "u",
       pass: Secret.of("p"),
     });
-    expect(authFromEnv({ NATS_NKEY_SEED: "secret:nats:seed:SUA" })).toEqual({ kind: "nkey", seed: Secret.of("SUA") });
-    expect(authFromEnv({ NATS_CREDS: "secret:nats:creds:abc" })).toEqual({ kind: "creds", creds: Secret.of("abc") });
+    const seed = "SUAIBDPBAUTWCWBKIO6XHQNINK5FWJW4OHLXC3HQ2KFE4PEJUA44CNHTC4";
+    const auth = authFromEnv({ NATS_JWT: "secret:nats:jwt:j", NATS_SEED: `secret:nats:seed:${seed}` });
+    expect(auth.kind === "jwt" && auth.seed.reveal()).toBe(seed);
   });
 
   it("never leaks auth through config serialization", () => {
-    const config = resolveConfig({}, { NATS_TOKEN: "secret:nats:token:t0k" });
+    const config = natsConfigFromEnv({ NATS_TOKEN: "secret:nats:token:t0k" });
     expect(JSON.stringify(config)).not.toContain("t0k");
     expect(inspect(config, { depth: 5 })).not.toContain("t0k");
   });
 
   it("accepts string secrets in explicit config", () => {
-    const config = resolveConfig({ auth: { kind: "token", token: "secret:nats:token:t0k" } }, {});
+    const config = natsConfig({ auth: { kind: "token", token: "secret:nats:token:t0k" } });
     expect(config.auth).toEqual({ kind: "token", token: Secret.of("t0k") });
   });
 });

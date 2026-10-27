@@ -51,7 +51,7 @@ let topicSeq = 0;
 const topicName = (label: string) => `${label}-${run}-${topicSeq++}`;
 
 beforeAll(async () => {
-  await connectNats({ servers: process.env.NATS_SERVERS, name: "next-nats-queue-test", workers: true });
+  await connectNats({ servers: process.env.NATS_URL, name: "next-nats-queue-test", workers: true });
 });
 
 afterAll(async () => {

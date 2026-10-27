@@ -84,6 +84,12 @@ importers:
       '@nats-io/transport-node':
         specifier: 3.4.0
         version: 3.4.0
+      '@synadia-ai/agent-service':
+        specifier: 0.6.0
+        version: 0.6.0
+      '@synadia-ai/agents':
+        specifier: 0.6.0
+        version: 0.6.0
       cron-parser:
         specifier: ^5.10.2
         version: 5.10.2
@@ -680,6 +686,14 @@ packages:
 
   '@swc/helpers@0.5.23':
     resolution: {integrity: sha512-5lSsMOTXURePglDfvuAQUqkGek9Hg2kksOYay2m0+XR++b2NWYL/4sWyuvVBIs8oKnJaxkdi9whaL/sqN13afw==}
+
+  '@synadia-ai/agent-service@0.6.0':
+    resolution: {integrity: sha512-2UFpYgnKnGJn9AXEBogmJalO+dfw6Tgcgk/ON4f3+g8ZBpvtxUCkJ/HxUyxntCbnsXYdeOAhFRRSUkMFYYFD5A==}
+    engines: {node: '>=20.0.0'}
+
+  '@synadia-ai/agents@0.6.0':
+    resolution: {integrity: sha512-hfiOgZasJsZorWViML2+fn2z5Y2eq5HiBoLz61t1PBwvSLAYi+tBM8TF3YPRcqj9tRqqvjteo9y5LozEgEvDdA==}
+    engines: {node: '>=20.0.0'}
 
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
@@ -1576,6 +1590,19 @@ snapshots:
   '@swc/helpers@0.5.23':
     dependencies:
       tslib: 2.8.1
+
+  '@synadia-ai/agent-service@0.6.0':
+    dependencies:
+      '@nats-io/nats-core': 3.4.0
+      '@nats-io/services': 3.4.0
+      '@synadia-ai/agents': 0.6.0
+
+  '@synadia-ai/agents@0.6.0':
+    dependencies:
+      '@nats-io/nats-core': 3.4.0
+      '@nats-io/nkeys': 2.0.3
+      '@nats-io/services': 3.4.0
+      '@nats-io/transport-node': 3.4.0
 
   '@types/chai@5.2.3':
     dependencies:

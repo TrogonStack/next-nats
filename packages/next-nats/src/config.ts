@@ -1,23 +1,14 @@
+import { hostname } from "node:os";
 import { invalidArgument } from "./errors.js";
-import { Secret, secretFromEnv } from "./secret.js";
+import { readFileSync } from "node:fs";
+import { authFromEnv, normalizeAuth, type NatsAuth, type NatsAuthInput } from "./auth.js";
+import { duration, type DurationInput } from "./duration.js";
+import { envBool, envBytes, envMillis, envInt, envString, envSynadia, type Env } from "./env.js";
+import { byteSize, SYNADIA_DEFAULT_STREAM_MAX_BYTES, type ByteSizeInput } from "./size.js";
+import { DEFAULT_SYNADIA_REGION, synadiaRegion, synadiaServers, type SynadiaRegion } from "./synadia-region.js";
 
 export type NatsTransport = "tcp" | "ws";
-
-export type NatsAuth =
-  | { kind: "none" }
-  | { kind: "token"; token: Secret }
-  | { kind: "userpass"; user: string; pass: Secret }
-  | { kind: "nkey"; seed: Secret }
-  | { kind: "creds"; creds: Secret }
-  | { kind: "credsFile"; path: string };
-
-export type NatsAuthInput =
-  | { kind: "none" }
-  | { kind: "token"; token: string | Secret }
-  | { kind: "userpass"; user: string; pass: string | Secret }
-  | { kind: "nkey"; seed: string | Secret }
-  | { kind: "creds"; creds: string | Secret }
-  | { kind: "credsFile"; path: string };
+export type NatsTransportInput = NatsTransport | "auto";
 
 export interface NatsTlsConfig {
   caFile?: string;
@@ -27,11 +18,18 @@ export interface NatsTlsConfig {
   rejectUnauthorized?: boolean;
 }
 
+export type SynadiaInput = true | string | { region?: string };
+
 export interface NatsConfig {
   servers: string[];
+  wsServers?: string[];
   transport: NatsTransport;
-  name?: string;
+  name: string;
   auth: NatsAuth;
+  synadia?: SynadiaRegion;
+  jsDomain?: string;
+  jsApiPrefix?: string;
+  streamMaxBytes?: number;
   tls?: NatsTlsConfig;
   workers: boolean;
   timeout: number;
@@ -40,102 +38,127 @@ export interface NatsConfig {
   drainTimeout: number;
 }
 
-export type NatsConfigInput = Partial<Omit<NatsConfig, "servers" | "auth">> & {
+export type NatsConfigInput = Partial<
+  Omit<NatsConfig, "servers" | "wsServers" | "auth" | "transport" | "synadia" | "streamMaxBytes" | "name" | "timeout" | "reconnectTimeWait" | "drainTimeout">
+> & {
+  timeout?: DurationInput;
+  reconnectTimeWait?: DurationInput;
+  drainTimeout?: DurationInput;
   servers?: string | string[];
+  wsServers?: string | string[];
+  transport?: NatsTransportInput;
+  name?: string;
   auth?: NatsAuthInput;
+  synadia?: SynadiaInput;
+  streamMaxBytes?: ByteSizeInput;
 };
 
 export const DEFAULT_SERVERS = ["nats://127.0.0.1:4222"];
 
-type Env = Record<string, string | undefined>;
-
-function bool(value: string | undefined): boolean | undefined {
-  if (value === undefined || value === "") return undefined;
-  return value === "true" || value === "1";
-}
-
-function int(env: Env, key: string): number | undefined {
-  const value = env[key];
-  if (value === undefined || value === "") return undefined;
-  const n = Number(value);
-  if (!Number.isInteger(n)) throw invalidArgument("next-nats.config", "INVALID_INTEGER", `${key} must be an integer, got "${value}"`);
-  return n;
+function splitServers(value: string | string[] | undefined): string[] {
+  const list = Array.isArray(value) ? value : (value ?? "").split(",");
+  return list.map((s) => s.trim()).filter(Boolean);
 }
 
 export function parseServers(value: string | string[] | undefined): string[] {
-  const list = Array.isArray(value) ? value : (value ?? "").split(",");
-  const servers = list.map((s) => s.trim()).filter(Boolean);
+  const servers = splitServers(value);
   return servers.length > 0 ? servers : [...DEFAULT_SERVERS];
 }
 
-export function normalizeAuth(auth: NatsAuthInput): NatsAuth {
-  switch (auth.kind) {
-    case "token":
-      return { kind: "token", token: Secret.parse(auth.token) };
-    case "userpass":
-      return { kind: "userpass", user: auth.user, pass: Secret.parse(auth.pass) };
-    case "nkey":
-      return { kind: "nkey", seed: Secret.parse(auth.seed) };
-    case "creds":
-      return { kind: "creds", creds: Secret.parse(auth.creds) };
-    default:
-      return auth;
-  }
+export function serversForTransport(config: Pick<NatsConfig, "servers" | "wsServers" | "transport">): string[] {
+  return config.transport === "ws" ? (config.wsServers ?? config.servers) : config.servers;
 }
 
-export function authFromEnv(env: Env): NatsAuth {
-  const creds = secretFromEnv(env.NATS_CREDS);
-  if (creds) return { kind: "creds", creds };
-  if (env.NATS_CREDS_FILE) return { kind: "credsFile", path: env.NATS_CREDS_FILE };
-  const seed = secretFromEnv(env.NATS_NKEY_SEED);
-  if (seed) return { kind: "nkey", seed };
-  const token = secretFromEnv(env.NATS_TOKEN);
-  if (token) return { kind: "token", token };
-  if (env.NATS_USER) {
-    return { kind: "userpass", user: env.NATS_USER, pass: secretFromEnv(env.NATS_PASS) ?? Secret.of("") };
+export function defaultConnectionName(): string {
+  return `next-nats@${hostname()}:${process.pid}`;
+}
+
+function resolveTransport(value: NatsTransportInput | string, nextRuntime: string | undefined): NatsTransport {
+  if (value === "tcp" || value === "ws") return value;
+  if (value === "auto") {
+    const bun = "Bun" in globalThis;
+    return bun || nextRuntime === "edge" ? "ws" : "tcp";
   }
-  return { kind: "none" };
+  throw invalidArgument("next-nats.config", "INVALID_TRANSPORT", `transport must be "auto", "tcp" or "ws", got "${value}"`);
+}
+
+function resolveSynadia(input: SynadiaInput | undefined): SynadiaRegion | undefined {
+  if (input === undefined) return undefined;
+  if (input === true) return DEFAULT_SYNADIA_REGION;
+  const region = typeof input === "string" ? input : input.region;
+  return region ? synadiaRegion(region) : DEFAULT_SYNADIA_REGION;
 }
 
 export function tlsFromEnv(env: Env): NatsTlsConfig | undefined {
   const tls: NatsTlsConfig = {
-    caFile: env.NATS_TLS_CA_FILE || undefined,
-    certFile: env.NATS_TLS_CERT_FILE || undefined,
-    keyFile: env.NATS_TLS_KEY_FILE || undefined,
-    handshakeFirst: bool(env.NATS_TLS_HANDSHAKE_FIRST),
-    rejectUnauthorized: bool(env.NATS_TLS_REJECT_UNAUTHORIZED),
+    caFile: envString(env, "NATS_CA"),
+    certFile: envString(env, "NATS_CERT"),
+    keyFile: envString(env, "NATS_KEY"),
+    handshakeFirst: envBool(env, "NATS_TLS_FIRST"),
+    rejectUnauthorized: envBool(env, "NATS_TLS_REJECT_UNAUTHORIZED"),
   };
-  const required = bool(env.NATS_TLS) === true;
+  const required = envBool(env, "NATS_TLS") === true;
   const configured = Object.values(tls).some((v) => v !== undefined);
   return required || configured ? tls : undefined;
 }
 
-export function resolveConfig(input: NatsConfigInput = {}, env: Env = process.env): NatsConfig {
-  const transport = input.transport ?? ((env.NATS_TRANSPORT as NatsTransport | undefined) || "tcp");
-  if (transport !== "tcp" && transport !== "ws") {
-    throw invalidArgument("next-nats.config", "INVALID_TRANSPORT", `NATS_TRANSPORT must be "tcp" or "ws", got "${transport}"`);
+function build(input: NatsConfigInput, nextRuntime: string | undefined): NatsConfig {
+  const transport = resolveTransport(input.transport ?? "auto", nextRuntime);
+  const synadia = resolveSynadia(input.synadia);
+  const preset = synadia ? synadiaServers(synadia) : undefined;
+  const explicitServers = splitServers(input.servers);
+  const explicitWsServers = splitServers(input.wsServers);
+  const wsServers = explicitWsServers.length > 0 ? explicitWsServers : preset?.wsServers;
+  const { jsDomain, jsApiPrefix } = input;
+  if (jsDomain && jsApiPrefix) {
+    throw invalidArgument("next-nats.config", "JS_DOMAIN_AND_API_PREFIX", "jsDomain and jsApiPrefix are mutually exclusive");
   }
+  const streamMaxBytes =
+    input.streamMaxBytes !== undefined ? byteSize(input.streamMaxBytes).toBytes() : synadia ? SYNADIA_DEFAULT_STREAM_MAX_BYTES : undefined;
   return {
-    servers: parseServers(input.servers ?? env.NATS_SERVERS),
+    servers: explicitServers.length > 0 ? explicitServers : (preset?.servers ?? [...DEFAULT_SERVERS]),
+    ...(wsServers && { wsServers }),
     transport,
-    name: input.name ?? (env.NATS_NAME || undefined),
-    auth: input.auth ? normalizeAuth(input.auth) : authFromEnv(env),
-    tls: input.tls ?? tlsFromEnv(env),
-    workers: input.workers ?? bool(env.NATS_WORKERS) ?? false,
-    timeout: input.timeout ?? int(env, "NATS_TIMEOUT") ?? 10_000,
-    maxReconnectAttempts: input.maxReconnectAttempts ?? int(env, "NATS_MAX_RECONNECT_ATTEMPTS") ?? -1,
-    reconnectTimeWait: input.reconnectTimeWait ?? int(env, "NATS_RECONNECT_TIME_WAIT") ?? 2_000,
-    drainTimeout: input.drainTimeout ?? int(env, "NATS_DRAIN_TIMEOUT") ?? 10_000,
+    name: input.name || defaultConnectionName(),
+    auth: input.auth ? normalizeAuth(input.auth) : { kind: "none" },
+    ...(synadia && { synadia }),
+    ...(jsDomain && { jsDomain }),
+    ...(jsApiPrefix && { jsApiPrefix }),
+    ...(streamMaxBytes !== undefined && { streamMaxBytes }),
+    ...(input.tls && { tls: input.tls }),
+    workers: input.workers ?? false,
+    timeout: duration(input.timeout ?? 10_000).millis,
+    maxReconnectAttempts: input.maxReconnectAttempts ?? -1,
+    reconnectTimeWait: duration(input.reconnectTimeWait ?? 2_000).millis,
+    drainTimeout: duration(input.drainTimeout ?? 10_000).millis,
   };
 }
 
-const CREDS_MARKER = "BEGIN NATS USER JWT";
-
-export function decodeCreds(value: string | Secret): Uint8Array {
-  const trimmed = Secret.parse(value).reveal().trim();
-  const text = trimmed.includes(CREDS_MARKER) ? trimmed : Buffer.from(trimmed, "base64").toString("utf8");
-  if (!text.includes(CREDS_MARKER)) {
-    throw invalidArgument("next-nats.config", "INVALID_CREDS", "NATS_CREDS is not a creds file (raw or base64): missing a NATS USER JWT block");
-  }
-  return new TextEncoder().encode(text);
+export function natsConfig(input: NatsConfigInput = {}): NatsConfig {
+  return build(input, process.env.NEXT_RUNTIME);
 }
+
+const readTextFile = (path: string): string => readFileSync(path, "utf8");
+
+export function natsConfigFromEnv(env: Env = process.env): NatsConfig {
+  const input: NatsConfigInput = {
+    servers: env.NATS_URL,
+    wsServers: env.NATS_WS_SERVERS,
+    transport: (env.NATS_TRANSPORT || "auto") as NatsTransportInput,
+    name: env.NATS_NAME,
+    auth: authFromEnv(env, readTextFile),
+    synadia: envSynadia(env),
+    jsDomain: envString(env, "NATS_JS_DOMAIN"),
+    jsApiPrefix: envString(env, "NATS_JS_API_PREFIX"),
+    streamMaxBytes: envBytes(env, "NATS_STREAM_MAX_BYTES"),
+    tls: tlsFromEnv(env),
+    workers: envBool(env, "NATS_WORKERS"),
+    timeout: envMillis(env, "NATS_TIMEOUT"),
+    maxReconnectAttempts: envInt(env, "NATS_MAX_RECONNECT_ATTEMPTS"),
+    reconnectTimeWait: envMillis(env, "NATS_RECONNECT_TIME_WAIT"),
+    drainTimeout: envMillis(env, "NATS_DRAIN_TIMEOUT"),
+  };
+  return build(input, env.NEXT_RUNTIME);
+}
+
+export { authFromEnv, decodeCreds, normalizeAuth, type NatsAuth, type NatsAuthInput } from "./auth.js";

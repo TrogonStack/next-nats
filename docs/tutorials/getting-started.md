@@ -13,7 +13,7 @@ By the end of this lesson you have a local NATS server, the demo app running aga
 mise run compose:up
 ```
 
-This starts the `next-nats` compose project. The server is reachable as `nats://localhost:4222`, or as `nats://nats.next-nats.orb.local:4222` under OrbStack. The tasks default to the OrbStack hostname. Set `NATS_SERVERS` to override it.
+This starts the `next-nats` compose project. The server is reachable as `nats://localhost:4222`, or as `nats://nats.next-nats.orb.local:4222` under OrbStack. The tasks default to the OrbStack hostname. Set `NATS_URL` to override it.
 
 ## Install and build
 
@@ -59,7 +59,7 @@ export async function register() {
 }
 ```
 
-Set `NATS_SERVERS`, then pick a primitive from the [how-to guides](../how-tos/README.md).
+Set `NATS_URL`, then pick a primitive from the [how-to guides](../how-tos/README.md).
 
 ## Stop NATS
 

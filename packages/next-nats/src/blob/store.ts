@@ -2,7 +2,7 @@ import "server-only";
 import type { ObjectInfo, ObjectStore } from "@nats-io/obj";
 import { JetStreamApiCodes, JetStreamApiError, JsHeaders, type JetStreamClient, type JetStreamManager } from "@nats-io/jetstream";
 import { headers } from "@nats-io/nats-core";
-import { getObjm } from "../connection.js";
+import { openObj } from "../connection.js";
 import { getBlobConfig } from "./config.js";
 import { assertAccess, assertBody, assertConsistentIfMatch, assertPathname } from "./validate.js";
 import { chunked, concat, inferContentType, limitSize, toStream } from "./body.js";
@@ -35,7 +35,7 @@ export type { BlobAccessType, BlobCommandOptions, PutBlobResult } from "./types.
 
 const PART_SIZE = 8 * 1024 * 1024;
 const MAX_PARTS = 10_000;
-const UPLOAD_TTL_NANOS = 24 * 60 * 60 * 1_000_000_000;
+const UPLOAD_TTL_MS = 24 * 60 * 60 * 1_000;
 
 export interface PutCommandOptions extends CommonCreateBlobOptions, WithUploadProgress {
   multipart?: boolean;
@@ -144,7 +144,7 @@ function openStore(bucket: string, ttl?: number): Promise<ObjectStore> {
   const cache = stores();
   let store = cache.get(bucket);
   if (!store) {
-    store = getObjm().then((objm) => objm.create(bucket, ttl === undefined ? undefined : { ttl }));
+    store = openObj(bucket, ttl === undefined ? {} : { ttl });
     cache.set(bucket, store);
     store.catch(() => cache.delete(bucket));
   }
@@ -156,7 +156,7 @@ export function getBlobStore(bucket = getBlobConfig().bucket): Promise<ObjectSto
 }
 
 function getUploadStore(): Promise<ObjectStore> {
-  return openStore(`${getBlobConfig().bucket}_mpu`, UPLOAD_TTL_NANOS);
+  return openStore(`${getBlobConfig().bucket}_mpu`, UPLOAD_TTL_MS);
 }
 
 export function etagOf(info: ObjectInfo): string {

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { distPathOf, type BuildVariant } from "./env.js";
 
 async function* walk(directory: string): AsyncGenerator<string> {
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
+  for (const entry of await readdir(directory, { withFileTypes: true }).catch(() => [])) {
     if (entry.name === "node_modules" || entry.isSymbolicLink()) continue;
     const path = join(directory, entry.name);
     if (entry.isDirectory()) yield* walk(path);
@@ -11,9 +11,11 @@ async function* walk(directory: string): AsyncGenerator<string> {
   }
 }
 
-export async function bundleText(variant: BuildVariant, area: "server" | "static"): Promise<string> {
+export async function bundleText(variant: BuildVariant, area: "server" | "static", subdirectories: string[] = [""]): Promise<string> {
   const parts: string[] = [];
-  for await (const file of walk(join(distPathOf(variant), area))) parts.push(await readFile(file, "utf8"));
+  for (const subdirectory of subdirectories) {
+    for await (const file of walk(join(distPathOf(variant), area, subdirectory))) parts.push(await readFile(file, "utf8"));
+  }
   return parts.join("\n");
 }
 

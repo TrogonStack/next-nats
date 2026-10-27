@@ -148,7 +148,7 @@ export function createSseResponse(
       pull: release,
       cancel: finish,
     },
-    new CountQueuingStrategy({ highWaterMark: HIGH_WATER_MARK }),
+    { highWaterMark: HIGH_WATER_MARK },
   );
 
   const headers = new Headers(opts.headers);

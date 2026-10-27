@@ -35,7 +35,7 @@ next build
 next start
 ```
 
-The specifiers are aliased to `@trogonstack/next-nats`, the cache handlers are installed and `vercel.json` is embedded. Set `NATS_SERVERS` and, for blob tokens, `BLOB_SECRET` at runtime.
+The specifiers are aliased to `@trogonstack/next-nats`, the cache handlers are installed and `vercel.json` is embedded. Set `NATS_URL` and, for blob tokens, `BLOB_SECRET` at runtime.
 
 On Vercel, which sets `VERCEL=1`, the build bundles the real packages and installs nothing from this package.
 

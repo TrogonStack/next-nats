@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { CacheEntry } from "next/cache.js";
-import { closeNats, connectNats, getNats } from "../../src/connection.js";
+import { closeNats, connectNats, getKvm, getNats } from "../../src/connection.js";
 import { createIncrementalCacheHandler, createUseCacheHandler, bucketNames } from "../../src/cache/index.js";
 import { pack, unpack } from "../../src/cache/pack.js";
+import { TagStore, tagKey } from "../../src/cache/tags.js";
 
 const run = Math.random().toString(36).slice(2, 8);
 const namespace = `t_cache_${run}`;
@@ -36,13 +37,13 @@ async function read(found: CacheEntry | undefined): Promise<string | undefined> 
 }
 
 beforeAll(async () => {
-  await connectNats({ servers: process.env.NATS_SERVERS, name: "next-nats-cache-test" });
+  await connectNats({ servers: process.env.NATS_URL, name: "next-nats-cache-test" });
 });
 
 afterAll(async () => {
   const { jsm } = await getNats();
   const names = bucketNames(namespace);
-  for (const stream of [`KV_${names.data}`, `KV_${names.isr}`, `KV_${names.tags}`, `OBJ_${names.objects}`]) {
+  for (const stream of [`KV_${names.cache}`, `OBJ_${names.objects}`]) {
     await jsm.streams.delete(stream).catch(() => undefined);
   }
   await closeNats();
@@ -62,6 +63,25 @@ describe("pack", () => {
     expect(Buffer.isBuffer(out.rscData)).toBe(true);
     expect([...out.rscData]).toEqual([1, 2, 3, 0, 255]);
     expect(out.segmentData.get("/a")?.toString()).toBe("seg");
+  });
+});
+
+describe("tag store", () => {
+  it("retries an update when the first KV read fails", async () => {
+    const kvm = await getKvm();
+    const kv = await kvm.create(`t_tags_${run}`, { history: 1 });
+    const get = kv.get.bind(kv);
+    let failures = 0;
+    kv.get = async (...args: Parameters<typeof get>) => {
+      if (failures++ < 2) throw new Error("timeout");
+      return get(...args);
+    };
+    const store = await TagStore.open(kv, false);
+    await store.update(["flaky"]);
+    expect(failures).toBeGreaterThan(2);
+    expect((await get(tagKey("flaky")))?.operation).toBe("PUT");
+    store.stop();
+    await kv.destroy();
   });
 });
 
@@ -85,6 +105,17 @@ describe("use cache handler", () => {
     expect(await read(await a.get("k2", []))).toBe("late");
     await pending;
     await a.close();
+  });
+
+  it("keeps the newer generation when an older set lands last", async () => {
+    const a = createUseCacheHandler(options);
+    const b = createUseCacheHandler(options);
+    const now = Date.now();
+    await a.set("k-order", entry("new", { timestamp: now }));
+    await a.set("k-order", entry("old", { timestamp: now - 10_000 }));
+    expect(await read(await b.get("k-order", []))).toBe("new");
+    await a.close();
+    await b.close();
   });
 
   it("skips dynamic entries with expire 0", async () => {

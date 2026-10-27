@@ -8,6 +8,7 @@ import {
   type JsMsg,
 } from "@nats-io/jetstream";
 import { getNats } from "../connection.js";
+import { untilStreamExists } from "../streams.js";
 import { getLogger } from "../logger.js";
 import { ackLease } from "./delivery.js";
 import { durableFor, filterSubject, matchesTopic, provision, readStored, replyOf, type QueueStore, type StoredMessage } from "./store.js";
@@ -64,6 +65,7 @@ export interface ConsumerLoopOptions {
 export function runConsumerLoop(options: ConsumerLoopOptions): ConsumerLoop {
   const { store, pattern, group, ackWaitSeconds, concurrency } = options;
   let stopped = false;
+  const abort = new AbortController();
   let iterator: ConsumerMessages | undefined;
   const inflight = new Set<Promise<void>>();
 
@@ -95,6 +97,8 @@ export function runConsumerLoop(options: ConsumerLoopOptions): ConsumerLoop {
     let backoff = 1_000;
     while (!stopped) {
       try {
+        await untilStreamExists(store.stream, { subjects: [filterSubject(store, pattern)], signal: abort.signal });
+        if (stopped) break;
         const durable = await ensureConsumer(store, pattern, group, ackWaitSeconds, options.cursor);
         const { js } = await getNats();
         const consumer = await js.consumers.get(store.stream, durable);
@@ -123,6 +127,7 @@ export function runConsumerLoop(options: ConsumerLoopOptions): ConsumerLoop {
   return {
     async stop() {
       stopped = true;
+      abort.abort();
       await iterator?.close().catch(() => undefined);
       await done.catch(() => undefined);
     },

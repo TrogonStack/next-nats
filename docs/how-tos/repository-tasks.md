@@ -12,6 +12,7 @@ Every routine action is a mise task.
 | `mise run test` | Run the tests against NATS |
 | `mise run parity:redis` | Start Redis and its HTTP proxy, then run the Redis, KV and ratelimit differential suites |
 | `mise run e2e:run` | Build the demo three ways and run the end-to-end suite |
+| `mise run e2e:limits` | Run only the capped account suite |
 | `mise run demo:dev` | Run the demo in development mode |
 | `mise run demo:start` | Run the built demo |
 | `mise run demo:verify-cache` | Check cache coherency across two replicas |
@@ -19,7 +20,7 @@ Every routine action is a mise task.
 | `mise run parity:edge-queue` | Run the Edge Config, queue and cron differential suites |
 | `mise run ci` | Install, build, typecheck and test |
 
-`NATS_SERVERS` defaults to `nats://nats.next-nats.orb.local:4222` in these tasks. Export it to point somewhere else, or set `NEXT_NATS_COMPOSE_PROJECT` to run an isolated stack whose server is `nats://nats.<project>.orb.local:4222`.
+`NATS_URL` defaults to `nats://nats.next-nats.orb.local:4222` in these tasks. Export it to point somewhere else, or set `NEXT_NATS_COMPOSE_PROJECT` to run an isolated stack whose server is `nats://nats.<project>.orb.local:4222`.
 
 The compose file lives at `devops/docker/compose/compose.yaml` and keeps the project name `next-nats`.
 
@@ -56,3 +57,9 @@ The suite uses ports 3840 to 3859 and waits for one real cron tick, so a full ru
 | `E2E_KEEP_BUILDS` | Keep `examples/demo/.next-e2e` after the run |
 
 Both are meant for iterating on one test file: keep the builds from a first run, then skip the build on the next.
+
+## Run against a capped account
+
+`devops/docker/compose/compose.yaml` has a `limits` profile with a second server, `nats-limited`, configured by `nats-limited.conf`. Its only account allows 5 streams, 50 consumers, no memory storage, 2.5 GiB of disk and requires `max_bytes`, the limits of a free Synadia Cloud account. It does not touch the default `nats` service. Connect with `NATS_USER=capped`, `NATS_PASSWORD=capped` and `NATS_STREAM_MAX_BYTES=128MiB` at `nats://nats-limited.<project>.orb.local:4222`.
+
+`limits.test.ts` is part of `mise run e2e:run`. It starts the server, boots the demo once per capability, and checks that startup holds only the cron stream and that every capability provisions inside the cap. `mise run e2e:limits` runs it alone and reuses the builds when `E2E_SKIP_BUILD` is set.

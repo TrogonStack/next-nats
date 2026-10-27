@@ -5,6 +5,7 @@ import { codec } from "../codec.js";
 import { getNatsConfig, getNats, onNatsShutdown } from "../connection.js";
 import { httpStatusOf, SpecError, toSpecError, Visibility, type PublicErrorBody } from "../errors.js";
 import { getLogger } from "../logger.js";
+import { guardSubscriptions } from "../subscribe.js";
 import { EndpointError } from "./errors.js";
 import { runParser, type Parser } from "./schema.js";
 
@@ -179,8 +180,16 @@ export function defineService<const E extends EndpointMap>(config: ServiceConfig
       starting ??= (async () => {
         const { nc } = await getNats();
         const svcm = new Svcm(nc);
-        const started: Service[] = [];
-        for (let i = 0; i < instances; i++) started.push(await spawn(svcm));
+        const started = await guardSubscriptions(
+          nc,
+          config.name,
+          async () => {
+            const spawned: Service[] = [];
+            for (let i = 0; i < instances; i++) spawned.push(await spawn(svcm));
+            return spawned;
+          },
+          (spawned) => void Promise.all(spawned.map((svc) => svc.stop().catch(() => undefined))),
+        );
         running = started;
       })().catch((error) => {
         starting = undefined;

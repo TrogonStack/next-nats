@@ -1,1 +1,1 @@
-export NATS_SERVERS="${NATS_SERVERS:-nats://nats.${NEXT_NATS_COMPOSE_PROJECT:-next-nats}.orb.local:4222}"
+export NATS_URL="${NATS_URL:-nats://nats.${NEXT_NATS_COMPOSE_PROJECT:-next-nats}.orb.local:4222}"

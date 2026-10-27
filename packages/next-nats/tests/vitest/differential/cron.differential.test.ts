@@ -38,7 +38,7 @@ const waitForHits = async (count: number, timeoutMs = 20_000) => {
 const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 beforeAll(async () => {
-  await connectNats({ servers: process.env.NATS_SERVERS, workers: true, name: "next-nats-cron-differential" });
+  await connectNats({ servers: process.env.NATS_URL, workers: true, name: "next-nats-cron-differential" });
   server = createServer((req, res) => {
     hits.push({ method: req.method, url: req.url, headers: req.headers });
     respond(req, res);

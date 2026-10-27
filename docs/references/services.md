@@ -10,7 +10,7 @@ Exports of `@trogonstack/next-nats/services`, built on NATS micro.
 | --- | --- |
 | `name`, `version`, `description`, `metadata` | Service identity |
 | `queue` | Queue group. An empty string makes every instance answer |
-| `instances` | Instances started in this process |
+| `instances` | Instances started in this process. Each one holds about ten subscriptions on the shared connection, plus one per endpoint, so keep it small where the server caps subscriptions per connection |
 | `endpoints` | Map of endpoint name to `endpoint({ ... })` |
 | `onError` | Receives handler failures |
 

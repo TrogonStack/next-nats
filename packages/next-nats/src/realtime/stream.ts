@@ -2,6 +2,8 @@ import "server-only";
 import { DeliverPolicy, type OrderedConsumerOptions } from "@nats-io/jetstream";
 import { codec } from "../codec.js";
 import { getNats } from "../connection.js";
+import { publicErrorResponse } from "../errors.js";
+import { guardSubscriptions } from "../subscribe.js";
 import type { StreamName, Subject } from "../values.js";
 import { createSseResponse, lastEventSequence } from "./sse.js";
 import { toSseEvent, type RealtimeMessage, type SseSubjectOptions } from "./subject.js";
@@ -20,7 +22,7 @@ export interface SseStreamOptions<T = unknown> extends SseSubjectOptions<T> {
   inactiveThreshold?: number;
 }
 
-function deliverOptions(deliver: DeliverFrom): Partial<OrderedConsumerOptions> {
+export function deliverOptions(deliver: DeliverFrom): Partial<OrderedConsumerOptions> {
   if (deliver === "new") return { deliver_policy: DeliverPolicy.New };
   if (deliver === "last") return { deliver_policy: DeliverPolicy.Last };
   if (deliver === "all") return { deliver_policy: DeliverPolicy.All };
@@ -34,7 +36,7 @@ function deliverOptions(deliver: DeliverFrom): Partial<OrderedConsumerOptions> {
 }
 
 export async function sseFromStream<T = unknown>(request: Request, opts: SseStreamOptions<T>): Promise<Response> {
-  const { js } = await getNats();
+  const { nc, js } = await getNats();
   const resumeFrom = lastEventSequence(request);
   const deliver: DeliverFrom = resumeFrom !== undefined ? { startSeq: resumeFrom + 1 } : (opts.deliver ?? "new");
   const filters = opts.filterSubjects?.map(String);
@@ -44,7 +46,13 @@ export async function sseFromStream<T = unknown>(request: Request, opts: SseStre
     ...(filters?.length && { filter_subjects: filters }),
     inactive_threshold: opts.inactiveThreshold ?? 60_000,
   });
-  const messages = await consumer.consume();
+  let messages: Awaited<ReturnType<typeof consumer.consume>>;
+  try {
+    messages = await guardSubscriptions(nc, opts.stream, () => consumer.consume(), (live) => live.stop());
+  } catch (error) {
+    await consumer.delete().catch(() => undefined);
+    return publicErrorResponse(error);
+  }
 
   const release = async () => {
     messages.stop();

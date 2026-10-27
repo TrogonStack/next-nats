@@ -1,7 +1,9 @@
 import "server-only";
-import type { MsgHdrs } from "@nats-io/nats-core";
+import type { MsgHdrs, Subscription } from "@nats-io/nats-core";
 import { codec } from "../codec.js";
 import { getNats } from "../connection.js";
+import { publicErrorResponse } from "../errors.js";
+import { subscribeConfirmed } from "../subscribe.js";
 import type { Subject } from "../values.js";
 import { createSseResponse, type SseEvent, type SseOptions } from "./sse.js";
 
@@ -38,27 +40,30 @@ export async function sseFromSubject<T = unknown>(
   opts: SseSubjectOptions<T> = {},
 ): Promise<Response> {
   const { nc } = await getNats();
+  let sub: Subscription;
+  try {
+    sub = await subscribeConfirmed(nc, String(subject));
+  } catch (error) {
+    return publicErrorResponse(error);
+  }
+  if (request.signal.aborted) {
+    sub.unsubscribe();
+    return new Response(null, { status: 499 });
+  }
   return createSseResponse(request, opts, (sink) => {
-    const sub = nc.subscribe(subject, {
-      callback: (err, msg) => {
-        if (err) {
-          sink.fail(err);
-          return;
-        }
-        if (sink.closed) return;
-        void (async () => {
-          const message: RealtimeMessage<T> = {
-            subject: msg.subject,
-            data: codec.tryDecodeJson<T>(msg.data) as T,
-            payload: msg.data,
-            headers: msg.headers,
-          };
-          const event = await toSseEvent(message, opts, {});
-          if (event) await sink.send(event);
-        })().catch((error) => sink.fail(error));
-      },
-    });
-    void sub.closed.then(
+    void (async () => {
+      for await (const msg of sub) {
+        if (sink.closed) break;
+        const message: RealtimeMessage<T> = {
+          subject: msg.subject,
+          data: codec.tryDecodeJson<T>(msg.data) as T,
+          payload: msg.data,
+          headers: msg.headers,
+        };
+        const event = await toSseEvent(message, opts, {});
+        if (event) await sink.send(event);
+      }
+    })().then(
       () => sink.close(),
       (error) => sink.fail(error),
     );

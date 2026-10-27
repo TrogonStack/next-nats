@@ -12,7 +12,7 @@ const NEXT_ARGS: Record<BuildVariant, string[]> = {
 export async function buildDemo(variant: BuildVariant): Promise<void> {
   await mkdir(`${REPOSITORY_ROOT}.trogonai/e2e`, { recursive: true });
   const log = createWriteStream(`${REPOSITORY_ROOT}.trogonai/e2e/build-${variant}.log`);
-  const env: NodeJS.ProcessEnv = { ...process.env, NATS_SERVERS: natsServers(), NEXT_DIST_DIR: distDirOf(variant) };
+  const env: NodeJS.ProcessEnv = { ...process.env, NATS_URL: natsServers(), NEXT_DIST_DIR: distDirOf(variant) };
   delete env.VERCEL;
   if (variant === "vercel") env.VERCEL = "1";
   const child = spawn("pnpm", ["exec", "next", ...NEXT_ARGS[variant]], { cwd: DEMO_ROOT, env, stdio: ["ignore", "pipe", "pipe"] });

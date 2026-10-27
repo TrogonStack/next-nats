@@ -17,6 +17,10 @@ export function rateLimited(headers: Record<string, string>): Response {
   return publicErrorResponse(error, { headers });
 }
 
+export function unavailable(reason: string, message: string): Response {
+  return publicErrorResponse(new SpecError({ code: Code.UNAVAILABLE, domain: DOMAIN, reason, message, visibility: Visibility.PUBLIC }));
+}
+
 export async function readJson<T>(request: Request): Promise<T | Response> {
   try {
     return (await request.json()) as T;

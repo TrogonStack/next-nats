@@ -229,17 +229,27 @@ export function createCronRuntime(options: CronRuntimeOptions = {}): CronRuntime
       }
     };
 
+    const publishUntilStored = async (at: Date) => {
+      const giveUpAt = Math.min(nextOccurrence(def.schedule, at, def.timezone).getTime(), at.getTime() + maxLateness);
+      for (let delay = 250; ; delay = Math.min(delay * 2, 5_000)) {
+        try {
+          await publishTick(at);
+          return;
+        } catch (error) {
+          def.onError?.(error);
+          if (abort.signal.aborted || Date.now() + delay >= giveUpAt) return;
+          await sleepUntil(Date.now() + delay, abort.signal);
+        }
+      }
+    };
+
     const tickLoop = async () => {
       let cursor = new Date();
       while (!abort.signal.aborted) {
         const at = nextOccurrence(def.schedule, cursor, def.timezone);
         await sleepUntil(at.getTime(), abort.signal);
         if (abort.signal.aborted) break;
-        try {
-          await publishTick(at);
-        } catch (error) {
-          def.onError?.(error);
-        }
+        await publishUntilStored(at);
         cursor = at;
       }
     };

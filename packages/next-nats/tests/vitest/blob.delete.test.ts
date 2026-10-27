@@ -5,7 +5,7 @@ import { BlobNotFoundError, BlobPreconditionFailedError, configureBlob, del, get
 const bucket = `blobdel_${Math.random().toString(36).slice(2, 8)}`;
 
 beforeAll(async () => {
-  await connectNats({ servers: process.env.NATS_SERVERS, name: "next-nats-blob-delete-test" });
+  await connectNats({ servers: process.env.NATS_URL, name: "next-nats-blob-delete-test" });
   configureBlob({ bucket, baseUrl: "http://localhost:3000/blob", secret: "test-secret" });
 });
 

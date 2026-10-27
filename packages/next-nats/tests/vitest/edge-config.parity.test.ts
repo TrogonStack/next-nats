@@ -18,7 +18,7 @@ async function waitFor(fn: () => Promise<boolean>, ms = 10_000) {
 }
 
 beforeAll(async () => {
-  await connectNats({ servers: process.env.NATS_SERVERS, name: "next-nats-ec-test" });
+  await connectNats({ servers: process.env.NATS_URL, name: "next-nats-ec-test" });
 });
 
 afterAll(async () => {

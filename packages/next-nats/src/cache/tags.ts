@@ -18,10 +18,12 @@ interface StoredTag extends TagRecord {
 }
 
 const CAS_ATTEMPTS = 8;
+const RETRY_DELAY_MS = 25;
 const READY_TIMEOUT_MS = 5_000;
 
-export const tagKey = (tag: string): string => Buffer.from(tag, "utf8").toString("base64url");
-const tagFromKey = (key: string): string => Buffer.from(key, "base64url").toString("utf8");
+export const TAG_PREFIX = "t.";
+export const tagKey = (tag: string): string => `${TAG_PREFIX}${Buffer.from(tag, "utf8").toString("base64url")}`;
+const tagFromKey = (key: string): string => Buffer.from(key.slice(TAG_PREFIX.length), "base64url").toString("utf8");
 
 export class TagStore {
   private readonly records = new Map<string, TagRecord>();
@@ -39,8 +41,12 @@ export class TagStore {
 
   static async open(kv: KV, mirrorToNext = true): Promise<TagStore> {
     const store = new TagStore(kv, mirrorToNext);
-    const { values } = await kv.status();
-    if (values === 0) store.resolveReady();
+    let any = false;
+    for await (const _ of await kv.keys(`${TAG_PREFIX}>`)) {
+      any = true;
+      break;
+    }
+    if (!any) store.resolveReady();
     setTimeout(() => store.resolveReady(), READY_TIMEOUT_MS).unref();
     void store.watch();
     return store;
@@ -49,7 +55,7 @@ export class TagStore {
   private async watch(): Promise<void> {
     while (!this.stopped) {
       try {
-        const watcher = await this.kv.watch({ include: KvWatchInclude.LastValue });
+        const watcher = await this.kv.watch({ key: `${TAG_PREFIX}>`, include: KvWatchInclude.LastValue });
         this.watcher = watcher;
         for await (const entry of watcher) {
           const tag = tagFromKey(entry.key);
@@ -86,23 +92,24 @@ export class TagStore {
     const key = tagKey(tag);
     const now = Date.now();
     for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt++) {
-      const current = await this.kv.get(key);
-      const existing = current && current.operation === "PUT" ? current.json<StoredTag>() : { tag };
-      const next: StoredTag = durations
-        ? {
-            ...existing,
-            tag,
-            stale: now,
-            ...(durations.expire !== undefined && { expired: now + durations.expire * 1000 }),
-          }
-        : { ...existing, tag, expired: now };
       try {
+        const current = await this.kv.get(key);
+        const existing = current && current.operation === "PUT" ? current.json<StoredTag>() : { tag };
+        const next: StoredTag = durations
+          ? {
+              ...existing,
+              tag,
+              stale: now,
+              ...(durations.expire !== undefined && { expired: now + durations.expire * 1000 }),
+            }
+          : { ...existing, tag, expired: now };
         if (current) await this.kv.update(key, codec.encodeJson(next), current.revision);
         else await this.kv.create(key, codec.encodeJson(next));
         this.apply(tag, next);
         return;
       } catch (err) {
         if (attempt === CAS_ATTEMPTS - 1) throw err;
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * (attempt + 1)));
       }
     }
   }

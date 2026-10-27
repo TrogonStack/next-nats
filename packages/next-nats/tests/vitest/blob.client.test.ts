@@ -90,7 +90,7 @@ async function dispatch(request: Request): Promise<Response> {
 }
 
 beforeAll(async () => {
-  await connectNats({ servers: process.env.NATS_SERVERS, name: "next-nats-blob-client-test" });
+  await connectNats({ servers: process.env.NATS_URL, name: "next-nats-blob-client-test" });
   configureBlob({ bucket, baseUrl: `${origin}/blob`, secret: "client-test-secret" });
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
     const request = new Request(input as string, init);

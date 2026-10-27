@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { closeNats, connectNats, getNats } from "../../src/connection.js";
 import { createCronRuntime, listCronRuns, nextOccurrence, validateSchedule } from "../../src/cron/index.js";
 
@@ -15,7 +15,7 @@ async function waitFor(fn: () => boolean, ms = 30_000) {
 }
 
 beforeAll(async () => {
-  await connectNats({ servers: process.env.NATS_SERVERS, workers: true, name: "next-nats-cron-test" });
+  await connectNats({ servers: process.env.NATS_URL, workers: true, name: "next-nats-cron-test" });
 });
 
 afterAll(async () => {
@@ -58,6 +58,33 @@ describe("cron", () => {
     await a.stop();
     await b.stop();
   }, 40_000);
+
+  it("publishes a tick again when the first publish times out", async () => {
+    const rt = createCronRuntime({ stream, prefix, replica: "p" });
+    const { js } = await getNats();
+    const publish = js.publish.bind(js);
+    const failures: unknown[] = [];
+    let failedTick: number | undefined;
+    const spy = vi.spyOn(js, "publish").mockImplementation(async (...args: Parameters<typeof publish>) => {
+      if (failedTick === undefined && String(args[0]).endsWith(".lostTick")) {
+        failedTick = Number(args[2]?.msgID?.split(":")[1]);
+        throw new Error("timeout");
+      }
+      return publish(...args);
+    });
+    const fired: number[] = [];
+    const job = rt.defineCron({
+      name: "lostTick",
+      schedule: "*/2 * * * * *",
+      onError: (error) => void failures.push(error),
+      handler: ({ scheduledAt }) => void fired.push(scheduledAt.getTime()),
+    });
+    await waitFor(() => failedTick !== undefined && fired.includes(failedTick));
+    await job.stop();
+    spy.mockRestore();
+    expect(failures).toHaveLength(1);
+    expect(fired.filter((tick) => tick === failedTick)).toHaveLength(1);
+  }, 20_000);
 
   it("retries a failing tick and records final failure", async () => {
     const rt = createCronRuntime({ stream, prefix, replica: "r" });

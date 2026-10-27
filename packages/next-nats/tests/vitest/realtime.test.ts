@@ -75,7 +75,7 @@ const req = (signal?: AbortSignal, init: RequestInit = {}) =>
   new Request("http://localhost/api/feed", { signal, ...init });
 
 beforeAll(async () => {
-  await connectNats({ servers: process.env.NATS_SERVERS, workers: true, name: "next-nats-realtime-test" });
+  await connectNats({ servers: process.env.NATS_URL, workers: true, name: "next-nats-realtime-test" });
   await ensureStream({ name: STREAM, subjects: [`${SUBJ}.>`] });
 });
 
@@ -208,7 +208,6 @@ describe("sseFromSubject", () => {
     const { nc } = await getNats();
     const ac = new AbortController();
     const res = await sseFromSubject(req(ac.signal), `core.${run}.*`, { event: "msg" });
-    await nc.flush();
     await corePublish(`core.${run}.a`, { hello: "a" });
     await corePublish(`core.${run}.b`, "plain");
     const events = await readEvents(res, 2);

@@ -2,6 +2,7 @@ import "server-only";
 
 export { sseFromSubject, type RealtimeMessage, type SseSubjectOptions } from "./subject.js";
 export { sseFromStream, type DeliverFrom, type SseStreamOptions } from "./stream.js";
+export { consumeEphemeral, type EphemeralConsumeOptions, type EphemeralOutcome } from "./ephemeral.js";
 export {
   createSseResponse,
   formatSseEvent,

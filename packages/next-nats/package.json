@@ -84,13 +84,25 @@
       "types": "./dist/health/liveness.d.ts",
       "default": "./dist/health/liveness.js"
     },
+    "./health/diagnostics": {
+      "types": "./dist/health/diagnostics.d.ts",
+      "default": "./dist/health/diagnostics.js"
+    },
     "./health": {
       "types": "./dist/health/index.d.ts",
       "default": "./dist/health/index.js"
     },
+    "./agents": {
+      "types": "./dist/agents/index.d.ts",
+      "default": "./dist/agents/index.js"
+    },
     "./next": {
       "types": "./dist/next/index.d.ts",
       "default": "./dist/next/index.js"
+    },
+    "./edge": {
+      "types": "./dist/edge/index.d.ts",
+      "default": "./dist/edge/index.js"
     },
     "./package.json": "./package.json"
   },
@@ -101,6 +113,8 @@
     "@nats-io/obj": "3.4.0",
     "@nats-io/services": "3.4.0",
     "@nats-io/transport-node": "3.4.0",
+    "@synadia-ai/agent-service": "0.6.0",
+    "@synadia-ai/agents": "0.6.0",
     "cron-parser": "^5.10.2",
     "server-only": "^0.0.1"
   },

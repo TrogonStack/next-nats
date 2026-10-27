@@ -5,7 +5,7 @@ import { startCronCapture, type CronCapture } from "./support/cron-capture.js";
 import { stripTags, submitForm, testId } from "./support/html.js";
 import { isolatedEnv, unique } from "./support/isolation.js";
 import { openSse } from "./support/sse.js";
-import { SHARED_ENV, startServer, waitUntil, type RunningServer } from "./support/server.js";
+import { SHARED_ENV, settled, startServer, waitUntil, type RunningServer } from "./support/server.js";
 
 const PORTS = { a: 3845, b: 3846, cron: 3847 } as const;
 const MINUTE_MS = 60_000;
@@ -49,26 +49,35 @@ describe("two replicas on one NATS", () => {
   });
 
   it("shares a use cache entry and propagates updateTag in both directions", async () => {
-    const first = testId(await text(a, "/cache"), "nonce");
+    const nonceOn = (server: RunningServer) => async () => testId(await text(server, "/cache"), "nonce");
+    const agreed = () =>
+      settled(async () => `${await nonceOn(a)()}|${await nonceOn(b)()}`, "A and B to share one use cache entry", {
+        accept: (pair) => new Set(pair.split("|")).size === 1,
+      }).then((pair) => pair.split("|")[0]!);
+    const first = await agreed();
     expect(first).toBeTruthy();
-    expect(testId(await text(b, "/cache"), "nonce")).toBe(first);
 
     await submitForm({ origin: a.origin, path: "/cache", button: "updateTag" });
-    const onB = await eventually(async () => testId(await text(b, "/cache"), "nonce"), (nonce) => nonce !== first, "B to see the tag expire");
-    expect(testId(await text(a, "/cache"), "nonce")).toBe(onB);
+    await eventually(nonceOn(b), (nonce) => nonce !== first, "B to see the tag expire");
+    const onB = await agreed();
+    expect(onB).not.toBe(first);
 
     await submitForm({ origin: b.origin, path: "/cache", button: "updateTag" });
-    const onA = await eventually(async () => testId(await text(a, "/cache"), "nonce"), (nonce) => nonce !== onB, "A to see the tag expire");
-    expect(testId(await text(b, "/cache"), "nonce")).toBe(onA);
+    await eventually(nonceOn(a), (nonce) => nonce !== onB, "A to see the tag expire");
+    expect(await agreed()).not.toBe(onB);
   });
 
   it("shares a fetch cache entry and propagates updateTag", async () => {
-    const first = testId(await text(a, "/cache/isr"), "isr-nonce");
+    const nonceOn = (server: RunningServer) => async () => testId(await text(server, "/cache/isr"), "isr-nonce");
+    const agreed = () =>
+      settled(async () => `${await nonceOn(a)()}|${await nonceOn(b)()}`, "A and B to share one fetch cache entry", {
+        accept: (pair) => new Set(pair.split("|")).size === 1,
+      }).then((pair) => pair.split("|")[0]!);
+    const first = await agreed();
     expect(first).toBeTruthy();
-    expect(testId(await text(b, "/cache/isr"), "isr-nonce")).toBe(first);
     await submitForm({ origin: b.origin, path: "/cache/isr", button: "updateTag demo-isr" });
-    const onA = await eventually(async () => testId(await text(a, "/cache/isr"), "isr-nonce"), (nonce) => nonce !== first, "A to see the fetch tag expire");
-    expect(testId(await text(b, "/cache/isr"), "isr-nonce")).toBe(onA);
+    await eventually(nonceOn(a), (nonce) => nonce !== first, "A to see the fetch tag expire");
+    expect(await agreed()).not.toBe(first);
   });
 
   it("shares ratelimit counts", async () => {

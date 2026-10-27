@@ -11,7 +11,7 @@ const kv = new Redis({ bucket: BUCKET });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 beforeAll(async () => {
-  await connectNats({ servers: process.env.NATS_SERVERS, name: "next-nats-kv-test" });
+  await connectNats({ servers: process.env.NATS_URL, name: "next-nats-kv-test" });
 });
 
 afterAll(async () => {

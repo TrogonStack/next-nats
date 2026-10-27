@@ -3,10 +3,23 @@ name: next-nats
 services:
   nats:
     image: nats:2.12-alpine
-    command: ["-js", "-sd", "/data", "-m", "8222"]
+    command: ["-c", "/etc/nats/nats.conf"]
     volumes:
       - nats-data:/data
+      - ./nats.conf:/etc/nats/nats.conf:ro
     restart: unless-stopped
+
+  nats-limited:
+    profiles: ["limits"]
+    image: nats:2.12-alpine
+    command: ["-c", "/etc/nats/nats-limited.conf"]
+    volumes:
+      - ./nats-limited.conf:/etc/nats/nats-limited.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
 
   redis:
     profiles: ["redis"]

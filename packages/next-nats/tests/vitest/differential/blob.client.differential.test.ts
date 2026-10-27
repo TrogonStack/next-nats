@@ -126,7 +126,7 @@ beforeAll(async () => {
   process.env.VERCEL_BLOB_API_URL = fake.apiUrl;
   process.env.BLOB_READ_WRITE_TOKEN = fake.readWriteToken;
   process.env.VERCEL_BLOB_RETRIES = "0";
-  await connectNats({ servers: process.env.NATS_SERVERS, name: "next-nats-blob-client-differential" });
+  await connectNats({ servers: process.env.NATS_URL, name: "next-nats-blob-client-differential" });
 
   realApp = await serveFetchHandler(
     handlerFor(realClient.handleUpload as never, realCompleted, () => realApp.origin),

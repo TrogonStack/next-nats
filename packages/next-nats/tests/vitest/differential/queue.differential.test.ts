@@ -89,7 +89,7 @@ async function both<T>(scenario: (api: Api, name: "real" | "ours") => Promise<T>
 
 beforeAll(async () => {
   await fake.start();
-  await connectNats({ servers: process.env.NATS_SERVERS, name: "next-nats-queue-differential", workers: true });
+  await connectNats({ servers: process.env.NATS_URL, name: "next-nats-queue-differential", workers: true });
 });
 
 afterAll(async () => {

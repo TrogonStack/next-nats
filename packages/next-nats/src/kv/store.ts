@@ -6,14 +6,9 @@ import { getJs, getJsm, getNc, openKv } from "../connection.js";
 import { Code, SpecError } from "../errors.js";
 import { getLogger } from "../logger.js";
 import { decodeKey, encodeKey } from "./key.js";
+import { decodeRecord, encodeRecord, isExpired, nativeTtlOf, type KvRecord } from "./record.js";
 
-export type RecordKind = "s" | "h" | "l" | "S" | "z";
-
-export interface KvRecord {
-  t: RecordKind;
-  v: unknown;
-  x?: number;
-}
+export type { KvRecord, RecordKind } from "./record.js";
 
 export interface KvStoreOptions {
   bucket: string;
@@ -54,8 +49,6 @@ const CHECK_KEY = "~check";
 
 export type Store = Pick<KvStore, "bucket" | "maxRetries" | "nativeTtl" | "atomic" | "kv" | "read" | "write" | "remove" | "mutate" | "allKeys">;
 
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
 
 export class KvError extends SpecError {
   constructor(
@@ -155,16 +148,16 @@ export class KvStore {
     const entry = await kv.get(encodeKey(key));
     if (!entry) return { rev: 0, rec: null };
     if (entry.operation !== "PUT") return { rev: entry.revision, rec: null };
-    const rec = JSON.parse(decoder.decode(entry.value)) as KvRecord;
-    if (rec.x !== undefined && rec.x <= Date.now()) return { rev: entry.revision, rec: null };
+    const rec = decodeRecord(entry.value);
+    if (isExpired(rec)) return { rev: entry.revision, rec: null };
     return { rev: entry.revision, rec };
   }
 
   async write(key: string, rec: KvRecord, rev: number | undefined): Promise<boolean> {
     const { kv, nativeTtl } = await this.open();
     const ek = encodeKey(key);
-    const data = encoder.encode(JSON.stringify(rec));
-    const ttl = nativeTtl && rec.x !== undefined ? `${Math.max(1, Math.ceil((rec.x - Date.now()) / 1000))}s` : undefined;
+    const data = encodeRecord(rec);
+    const ttl = nativeTtl ? nativeTtlOf(rec) : undefined;
     try {
       if (ttl) {
         const js = await getJs();
@@ -226,8 +219,8 @@ export class KvStore {
       ops.map((op) => ({
         key: op.key,
         expected: op.expected,
-        body: op.rec === null ? null : encoder.encode(JSON.stringify(op.rec)),
-        ttl: op.rec?.x !== undefined && nativeTtl ? `${Math.max(1, Math.ceil((op.rec.x - Date.now()) / 1000))}s` : undefined,
+        body: op.rec === null ? null : encodeRecord(op.rec),
+        ttl: op.rec && nativeTtl ? nativeTtlOf(op.rec) : undefined,
       })),
       reads,
     );

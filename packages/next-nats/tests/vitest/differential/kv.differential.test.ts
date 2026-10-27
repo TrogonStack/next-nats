@@ -36,7 +36,7 @@ const memberArb = fc.constantFrom("m1", "m2", "m3", "m4", "m5");
 
 describe.skipIf(!available)("@vercel/kv differential", () => {
   beforeAll(async () => {
-    await connectNats({ servers: process.env.NATS_SERVERS, name: "next-nats-kv-differential" });
+    await connectNats({ servers: process.env.NATS_URL, name: "next-nats-kv-differential" });
   });
 
   afterAll(async () => {

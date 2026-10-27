@@ -1,9 +1,7 @@
-import { defineConsumer, ensureStream, getLogger } from "@trogonstack/next-nats";
+import { defineConsumer, getLogger } from "@trogonstack/next-nats";
 import { defineCron } from "@trogonstack/next-nats/cron";
 import { startQueueWorker } from "@trogonstack/next-nats/queue";
 import { DEMO_DLQ, DEMO_STREAM, DEMO_SUBJECT } from "@/constants/demo";
-
-await ensureStream({ name: DEMO_STREAM, subjects: [`${DEMO_SUBJECT}.>`, DEMO_DLQ] });
 
 defineConsumer<{ message: string; fail?: boolean }>({
   stream: DEMO_STREAM,

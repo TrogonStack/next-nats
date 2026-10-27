@@ -1,6 +1,6 @@
 import { openKv } from "../connection.js";
 import { resolveCacheOptions, type CacheOptions, type ResolvedCacheOptions } from "./options.js";
-import { EntryStore, registerStoreShutdown } from "./store.js";
+import { EntryStore, KEY_TTL_MARGIN_MS, registerStoreShutdown } from "./store.js";
 import { TagStore, registerTagStoreShutdown } from "./tags.js";
 
 export type CacheStoreKind = "data" | "isr";
@@ -30,18 +30,20 @@ function registry(): Map<string, Promise<CacheBackend<never>>> {
 }
 
 export const bucketNames = (namespace: string) => ({
-  data: `${namespace}_data`,
-  isr: `${namespace}_isr`,
-  tags: `${namespace}_tags`,
+  cache: `${namespace}_cache`,
   objects: `${namespace}_large`,
 });
 
+const ENTRY_PREFIX: Record<CacheStoreKind, string> = { data: "e.data.", isr: "e.isr." };
+
+const bucketOptions = (options: ResolvedCacheOptions) => ({
+  ttl: options.ttl > 0 ? options.ttl + KEY_TTL_MARGIN_MS : 0,
+  replicas: options.replicas,
+  history: 1,
+});
+
 async function openTags(options: ResolvedCacheOptions): Promise<TagStore> {
-  const kv = await openKv(bucketNames(options.namespace).tags, {
-    ttl: options.ttl > 0 ? options.ttl + 24 * 60 * 60 * 1000 : 0,
-    replicas: options.replicas,
-    history: 1,
-  });
+  const kv = await openKv(bucketNames(options.namespace).cache, bucketOptions(options));
   const tags = await TagStore.open(kv);
   registerTagStoreShutdown(tags);
   return tags;
@@ -66,7 +68,9 @@ async function openBackend<M>(
   const names = bucketNames(options.namespace);
   const tags = await (shared ? sharedTags(options) : openTags(options));
   const entries = await EntryStore.open<M>({
-    bucket: names[kind],
+    bucket: names.cache,
+    prefix: ENTRY_PREFIX[kind],
+    bucketOptions: bucketOptions(options),
     objectBucket: names.objects,
     ttl: options.ttl,
     lruBytes: options.lruBytes,

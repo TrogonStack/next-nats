@@ -38,7 +38,7 @@ export type Pair = {
 
 export async function openPair(options: { automaticDeserialization?: boolean; enableAutoPipelining?: boolean } = {}): Promise<Pair> {
   const bucket = `par_${Math.random().toString(36).slice(2, 10)}`;
-  await connectNats({ servers: process.env.NATS_SERVERS, name: "next-nats-redis-differential" });
+  await connectNats({ servers: process.env.NATS_URL, name: "next-nats-redis-differential" });
   const real = new UpstashRedis({
     url: PROXY_URL,
     token: PROXY_TOKEN,

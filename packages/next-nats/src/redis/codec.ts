@@ -1,23 +1,13 @@
 import { UpstashError } from "../kv/store.js";
-import type { KvRecord, RecordKind } from "../kv/store.js";
+import { deserialize, serializeValue, type KvRecord, type RecordKind } from "../kv/record.js";
+
+export { deserialize };
 
 export type ZEntry = [member: string, score: number];
 
 export function serialize(value: unknown): string {
   if (value === undefined) throw new UpstashError("ERR", "undefined is not a storable value, use null");
-  return typeof value === "string" ? value : JSON.stringify(value);
-}
-
-export function deserialize<T = unknown>(raw: string | null | undefined, enabled: boolean): T | null {
-  if (raw === null || raw === undefined) return null;
-  if (!enabled) return raw as T;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed === "number" && parsed.toString() !== raw) return raw as T;
-    return parsed as T;
-  } catch {
-    return raw as T;
-  }
+  return serializeValue(value);
 }
 
 export function deserializeHashValue(raw: string, enabled: boolean): unknown {

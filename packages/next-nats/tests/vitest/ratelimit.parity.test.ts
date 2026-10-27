@@ -10,7 +10,7 @@ const redis = new Redis({ bucket: BUCKET });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 beforeAll(async () => {
-  await connectNats({ servers: process.env.NATS_SERVERS, name: "next-nats-rl-test" });
+  await connectNats({ servers: process.env.NATS_URL, name: "next-nats-rl-test" });
 });
 
 afterAll(async () => {
@@ -32,13 +32,15 @@ describe("fixed window", () => {
   it("allows exactly N per window then resets", async () => {
     const rl = new Ratelimit({ redis, limiter: Ratelimit.fixedWindow(3, "1 s"), prefix: "fw" });
     const results = [];
+    await sleep(1000 - (Date.now() % 1000) + 5);
+    const windowEnd = Math.ceil(Date.now() / 1000) * 1000;
     for (let i = 0; i < 5; i++) results.push(await rl.limit("u1"));
-    const ok = results.filter((r) => r.success).length;
-    expect(ok === 3 || ok === 2).toBe(true);
+    expect(Date.now()).toBeLessThan(windowEnd);
+    expect(results.filter((r) => r.success)).toHaveLength(3);
     expect(results.at(-1)!.success).toBe(false);
     expect(results.at(-1)!.remaining).toBe(0);
     expect(results[0]!.limit).toBe(3);
-    await sleep(1100);
+    await sleep(windowEnd - Date.now() + 5);
     expect((await rl.limit("u1")).success).toBe(true);
   });
 

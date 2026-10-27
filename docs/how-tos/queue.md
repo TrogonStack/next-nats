@@ -50,6 +50,8 @@ startQueueWorker();
 
 The worker reads `vercel.json`, derives the consumer group from the file path, and posts each message to the route as a CloudEvent. A non-2xx answer redelivers the message after `retryAfterSeconds`. Set `NATS_QUEUE_CALLBACK_URL` when the route is not reachable at `http://127.0.0.1:$PORT`.
 
+The worker does not create the stream. It waits until `send` or another process creates it, so an app that never sends holds no `QUEUE` stream.
+
 Replicas that share a consumer group split the messages. Every other consumer group gets its own copy.
 
 ## Handle in process during development

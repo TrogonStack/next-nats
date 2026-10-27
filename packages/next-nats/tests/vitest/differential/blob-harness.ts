@@ -63,7 +63,7 @@ export async function startHarness(): Promise<Harness> {
   process.env.VERCEL_BLOB_API_URL = fake.apiUrl;
   process.env.BLOB_READ_WRITE_TOKEN = fake.readWriteToken;
   process.env.VERCEL_BLOB_RETRIES = "0";
-  await connectNats({ servers: process.env.NATS_SERVERS, name: "next-nats-blob-differential" });
+  await connectNats({ servers: process.env.NATS_URL, name: "next-nats-blob-differential" });
 
   const run = Math.random().toString(36).slice(2, 8);
   let sequence = 0;

@@ -66,7 +66,7 @@ const broadcast = defineService({
 });
 
 beforeAll(async () => {
-  await connectNats({ servers: process.env.NATS_SERVERS, workers: true, name: "next-nats-services-test" });
+  await connectNats({ servers: process.env.NATS_URL, workers: true, name: "next-nats-services-test" });
   await math.start();
   await broadcast.start();
 });
