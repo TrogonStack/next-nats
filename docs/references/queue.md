@@ -51,6 +51,7 @@ Error classes and the `CLOUD_EVENT_TYPE_V1BETA` and `CLOUD_EVENT_TYPE_V2BETA` co
 | --- | --- |
 | `NATS_QUEUE_STREAM` | `QUEUE` |
 | `NATS_QUEUE_PREFIX` | `queue` |
+| `NATS_QUEUE_DUPLICATE_WINDOW` | `24h`. Synadia Cloud rejects more than `30m` |
 | `NATS_QUEUE_CALLBACK_URL` | `http://127.0.0.1:$PORT` |
 | `NATS_QUEUE_SECRET` | Unset. When set, receipt handles are signed |
 | `NATS_WORKERS` | Must be `true` for `startQueueWorker` and `registerDevConsumer` |
@@ -71,6 +72,6 @@ Defaults follow the real package: visibility timeout 300 seconds (clamped to 30 
 - A trigger honors `maxDeliveries`. After a failed callback on or beyond that delivery count the message is dropped. There is no dead letter queue.
 - A message delayed with `initialDelaySeconds` reports delivery count 1 on its first delivery. The count of delayed deliveries is kept in memory, so it is lost when the process restarts and the next delivery then reports a higher count.
 - A `delaySeconds` longer than `retentionSeconds` is accepted and the message expires before it becomes visible, as documented by Vercel.
-- Duplicate sends with the same idempotency key return one deterministic `messageId`, and deduplication uses the 24 hour NATS duplicate window rather than the shorter of the retention and 24 hours.
+- Duplicate sends with the same idempotency key return one deterministic `messageId`, and deduplication uses the NATS duplicate window (`NATS_QUEUE_DUPLICATE_WINDOW`, 24 hours by default) rather than the shorter of the retention and 24 hours.
 - Receipt handles use the encoding of this package, and poll `receive` waits up to one second for messages.
 - `sendBatch` sends in parallel, so batch order is not preserved.

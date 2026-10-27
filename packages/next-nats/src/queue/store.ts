@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { headers as natsHeaders } from "@nats-io/nats-core";
 import type { JsMsg } from "@nats-io/jetstream";
 import { getNats } from "../connection.js";
+import { type Duration, type DurationInput, duration } from "../duration.js";
 import { ensureStream } from "../streams.js";
 import { subject } from "../values.js";
 import { BadRequestError, MessageCorruptedError, PayloadTooLargeError } from "./errors.js";
@@ -21,11 +22,13 @@ export const DEFAULT_REGION = "iad1";
 export interface QueueStoreOptions {
   stream?: string;
   prefix?: string;
+  duplicateWindow?: DurationInput;
 }
 
 export interface QueueStore {
   readonly stream: string;
   readonly prefix: string;
+  readonly duplicateWindow: Duration;
 }
 
 const CONFIG_KEY = Symbol.for("next-nats.queue.store");
@@ -39,6 +42,7 @@ export function resolveStore(options: QueueStoreOptions = {}, env: Record<string
   return {
     stream: options.stream ?? configured.stream ?? (env.NATS_QUEUE_STREAM || "QUEUE"),
     prefix: options.prefix ?? configured.prefix ?? (env.NATS_QUEUE_PREFIX || "queue"),
+    duplicateWindow: duration(options.duplicateWindow ?? configured.duplicateWindow ?? (env.NATS_QUEUE_DUPLICATE_WINDOW || "24h")),
   };
 }
 
@@ -84,7 +88,7 @@ export function provision(store: QueueStore): Promise<unknown> {
       name: store.stream,
       subjects: [`${store.prefix}.t.>`, `${store.prefix}.s.>`],
       max_age: MAX_RETENTION_SECONDS * NANOS_PER_SECOND,
-      duplicate_window: DAY_SECONDS * NANOS_PER_SECOND,
+      duplicate_window: store.duplicateWindow.toNanos(),
       allow_msg_schedules: true,
       allow_msg_ttl: true,
     } as Parameters<typeof ensureStream>[0]).catch((error) => {

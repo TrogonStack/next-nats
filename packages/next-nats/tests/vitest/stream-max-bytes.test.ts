@@ -4,7 +4,7 @@ import { closeNats, connectNats, getNats, openKv, openObj } from "../../src/conn
 import { createCronRuntime } from "../../src/cron/index.js";
 import { deadLetterCaptureSpec, ensureDeadLetterCaptureStream } from "../../src/dead-letter.js";
 import { configureBlob, getBlobStore } from "../../src/blob/index.js";
-import { provision } from "../../src/queue/store.js";
+import { provision, resolveStore } from "../../src/queue/store.js";
 import { ByteSize, byteSize, SYNADIA_DEFAULT_STREAM_MAX_BYTES } from "../../src/size.js";
 import { ensureStream, defineStream } from "../../src/streams.js";
 
@@ -149,10 +149,12 @@ describe("max_bytes on provisioned resources", () => {
     expect(await maxBytesOf(name)).toBe(LIMIT);
   });
 
-  it("fills max_bytes for the queue stream", async () => {
+  it("fills max_bytes and the configured duplicate window for the queue stream", async () => {
     const stream = track(`MB_QUEUE_${run}`);
-    await provision({ stream, prefix: `mbq${run}` });
+    await provision(resolveStore({ stream, prefix: `mbq${run}`, duplicateWindow: "30m" }, {}));
     expect(await maxBytesOf(stream)).toBe(LIMIT);
+    const info = await (await getNats()).jsm.streams.info(stream);
+    expect(info.config.duplicate_window).toBe(30 * 60 * 1_000_000_000);
   });
 
   it("fills max_bytes for the cron stream", async () => {
