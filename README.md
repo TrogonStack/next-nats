@@ -33,14 +33,6 @@ export default withNats({ cacheComponents: true }, { cache: true });
 | Cron Jobs | `@trogonstack/next-nats/cron` |
 | Health | `@trogonstack/next-nats/health` |
 
-## Quick start
-
-```sh
-mise run compose:up
-mise run install
-mise run demo:start
-```
-
 ## Documentation
 
 - [Tutorials](./docs/tutorials/README.md)
@@ -48,6 +40,6 @@ mise run demo:start
 - [References](./docs/references/README.md)
 - [Explanations](./docs/explanations/README.md)
 
-## License
+## Contributing
 
-[Apache-2.0](./LICENSE)
+See [CONTRIBUTING.md](./CONTRIBUTING.md).
