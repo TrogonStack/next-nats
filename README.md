@@ -8,6 +8,8 @@
 
 **It is for teams that want to run Next.js on their own servers, containers or Kubernetes without rewriting code built for Vercel.** It also suits teams that already run NATS and want their web tier on the same messaging backbone, and anyone who wants to keep the option of deploying the same app to Vercel later.
 
+For managed NATS infrastructure in production, we recommend <a href="https://synadia.com/?utm_source=trogonai&utm_medium=referral&utm_campaign=trogonai&utm_content=next-nats"><img src="assets/synadia-logo.png" alt="Synadia" width="20" style="vertical-align: middle;"> Synadia</a>.
+
 ```ts
 // next.config.ts
 import { withNats } from "@trogonstack/next-nats/next";
