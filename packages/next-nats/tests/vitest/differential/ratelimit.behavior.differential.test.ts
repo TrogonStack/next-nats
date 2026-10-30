@@ -48,8 +48,9 @@ describe.skipIf(!available)("ratelimit behavior differential against @upstash/ra
   describe("window size parsing", () => {
     const firstLimit = (lib: Lib, window: string) => async () => {
       const rl = build(lib, (l) => l.fixedWindow(2, window as "1 s"));
+      const requestedAt = Date.now();
       const first = await rl.limit("w");
-      return { success: first.success, remaining: first.remaining, span: first.reset - Date.now() > 0 };
+      return { success: first.success, remaining: first.remaining, span: first.reset - requestedAt > 0 };
     };
 
     it("observes the same span wherever in the window the first request lands", async () => {
@@ -64,7 +65,7 @@ describe.skipIf(!available)("ratelimit behavior differential against @upstash/ra
           clock.mockRestore();
         }
       };
-      expect(await observeFrom(boundary - 1)).toEqual(await observeFrom(boundary + window / 2));
+      expect(await observeFrom(boundary - 1)).toEqual(await observeFrom(boundary + window * 5 + window / 2));
     });
 
     const cases = ["abc", "0 s", "0.0004 ms", "1.5 s", "10s", "2 h", "1 w", "", "5 minutes", "-1 s", ".5 s"];
