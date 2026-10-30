@@ -6,7 +6,8 @@
   "packages": {
     "packages/next-nats": {
       "release-type": "node",
-      "package-name": "@trogonstack/next-nats"
+      "package-name": "@trogonstack/next-nats",
+      "initial-version": "0.1.0"
     }
   }
 }
