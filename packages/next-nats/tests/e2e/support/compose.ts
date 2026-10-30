@@ -7,6 +7,12 @@ import { waitUntil } from "./server.js";
 const run = promisify(execFile);
 const COMPOSE_FILE = `${REPOSITORY_ROOT}devops/docker/compose/compose.yaml`;
 
+export const compose = (...args: string[]) =>
+  run("docker", ["compose", "-p", composeProject(), ...args], {
+    cwd: REPOSITORY_ROOT,
+    env: { ...process.env, COMPOSE_FILE: process.env.COMPOSE_FILE ?? COMPOSE_FILE },
+  });
+
 function acceptsConnections(): Promise<boolean> {
   const { hostname, port } = new URL(natsServers().split(",")[0]!);
   return new Promise((resolve) => {
@@ -23,6 +29,6 @@ function acceptsConnections(): Promise<boolean> {
 }
 
 export async function restartNats(): Promise<void> {
-  await run("docker", ["compose", "-p", composeProject(), "-f", COMPOSE_FILE, "restart", "nats"], { cwd: REPOSITORY_ROOT });
+  await compose("restart", "nats");
   await waitUntil(acceptsConnections, 60_000, "NATS to accept connections after the restart", 250);
 }
