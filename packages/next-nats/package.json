@@ -3,6 +3,14 @@
   "version": "0.0.0",
   "type": "module",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TrogonStack/next-nats.git",
+    "directory": "packages/next-nats"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "sideEffects": false,
   "files": [
     "dist"
