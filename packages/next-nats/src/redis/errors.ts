@@ -1,4 +1,4 @@
-export { UpstashError } from "../kv/store.js";
+export { UpstashError } from "../kv/errors.js";
 
 export class UrlError extends Error {
   constructor(url: string) {

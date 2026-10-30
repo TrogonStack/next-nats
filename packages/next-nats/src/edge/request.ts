@@ -1,14 +1,11 @@
 import { RequestError, TimeoutError, type MsgHdrs } from "@nats-io/nats-core";
 import { codec } from "../codec.js";
-import { Code, SpecError, Visibility } from "../errors.js";
 import { buildHeaders, type PayloadOf, type SubjectName, type TraceOptions } from "../publish-core.js";
 import { getEdgeNats } from "./connection.js";
+import { EdgeRequestError } from "./request-error.js";
 
-const DOMAIN = "next-nats.edge";
 const SERVICE_ERROR_HEADER = "Nats-Service-Error";
 const SERVICE_ERROR_CODE_HEADER = "Nats-Service-Error-Code";
-
-export type RequestFailure = "timeout" | "unavailable" | "service";
 
 export interface EdgeRequestOptions extends TraceOptions {
   timeout?: number;
@@ -21,34 +18,6 @@ export interface EdgeReply {
   readonly headers?: MsgHdrs;
   json<T = unknown>(): T;
   string(): string;
-}
-
-export class EdgeRequestError extends SpecError {
-  readonly kind: RequestFailure;
-  readonly status: number;
-  readonly subject: string;
-
-  constructor(init: { kind: RequestFailure; status: number; subject: string; message: string }, options?: ErrorOptions) {
-    super({
-      code: init.kind === "timeout" ? Code.DEADLINE_EXCEEDED : init.kind === "unavailable" ? Code.UNAVAILABLE : codeOfStatus(init.status),
-      domain: DOMAIN,
-      reason: init.kind === "timeout" ? "REQUEST_TIMEOUT" : init.kind === "unavailable" ? "NO_RESPONDERS" : "SERVICE_ERROR",
-      message: init.message,
-      visibility: init.kind === "service" && init.status < 500 ? Visibility.PUBLIC : Visibility.PRIVATE,
-      cause: options?.cause,
-    });
-    this.name = "EdgeRequestError";
-    this.kind = init.kind;
-    this.status = init.status;
-    this.subject = init.subject;
-  }
-}
-
-function codeOfStatus(status: number): Code {
-  if (status === 404) return Code.NOT_FOUND;
-  if (status === 401) return Code.UNAUTHENTICATED;
-  if (status === 403) return Code.PERMISSION_DENIED;
-  return status >= 500 ? Code.INTERNAL : Code.INVALID_ARGUMENT;
 }
 
 export async function edgeRequest<S extends SubjectName>(

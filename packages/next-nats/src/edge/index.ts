@@ -5,5 +5,6 @@ export { resolveTrace, type BackoffOptions, type NatsEvents, type PayloadOf, typ
 export { TraceContext } from "../trace.js";
 export { Secret } from "../secret.js";
 export { edgeKv, resetEdgeKvHandles, type EdgeKv, type EdgeKvEntry, type EdgeKvPutOptions } from "./kv.js";
-export { edgeRequest, EdgeRequestError, type EdgeReply, type EdgeRequestOptions, type RequestFailure } from "./request.js";
+export { edgeRequest, type EdgeReply, type EdgeRequestOptions } from "./request.js";
+export { EdgeRequestError, type RequestFailure } from "./request-error.js";
 export { edgeSseFromSubject, edgeSubscribe, type EdgeMessage, type EdgeSseOptions, type EdgeSubscribeOptions } from "./subscribe.js";

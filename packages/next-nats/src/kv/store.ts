@@ -3,8 +3,9 @@ import { JetStreamApiCodes, JetStreamApiError } from "@nats-io/jetstream";
 import type { KV } from "@nats-io/kv";
 import { headers } from "@nats-io/nats-core";
 import { getJs, getJsm, getNc, openKv } from "../connection.js";
-import { Code, SpecError } from "../errors.js";
+import { Code } from "../errors.js";
 import { getLogger } from "../logger.js";
+import { UpstashError } from "./errors.js";
 import { decodeKey, encodeKey } from "./key.js";
 import { decodeRecord, encodeRecord, isExpired, nativeTtlOf, type KvRecord } from "./record.js";
 
@@ -49,31 +50,6 @@ const CHECK_KEY = "~check";
 
 export type Store = Pick<KvStore, "bucket" | "maxRetries" | "nativeTtl" | "atomic" | "kv" | "read" | "write" | "remove" | "mutate" | "allKeys">;
 
-
-export class KvError extends SpecError {
-  constructor(
-    readonly code: string,
-    message: string,
-    spec: { code?: Code; reason?: string } = {},
-  ) {
-    super({
-      code: code === "WRONGTYPE" ? Code.FAILED_PRECONDITION : Code.INVALID_ARGUMENT,
-      reason: code === "WRONGTYPE" ? "WRONG_TYPE" : "INVALID_COMMAND",
-      ...spec,
-      domain: "next-nats.kv",
-      message,
-      legacyMessage: `${code} ${message}`,
-    });
-    this.name = "KvError";
-  }
-}
-
-export class UpstashError extends KvError {
-  constructor(code: string, message: string, spec: { code?: Code; reason?: string } = {}) {
-    super(code, message, spec);
-    this.name = "UpstashError";
-  }
-}
 
 export function isConflict(err: unknown): boolean {
   return (

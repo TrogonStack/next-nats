@@ -1,4 +1,4 @@
-import { UpstashError } from "../kv/store.js";
+import { UpstashError } from "../kv/errors.js";
 import { Redis, internals } from "./redis.js";
 
 const HELPERS = new Set([

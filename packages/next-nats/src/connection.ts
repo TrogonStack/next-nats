@@ -22,7 +22,8 @@ import {
 import type { Secret } from "./secret.js";
 import { Objm } from "@nats-io/obj";
 import { connect as tcpConnect, type NodeConnectionOptions } from "@nats-io/transport-node";
-import { buildPortableAuthenticator, decodeCreds, withToken } from "./auth.js";
+import { decodeCreds } from "./auth.js";
+import { buildPortableAuthenticator, withToken } from "./authenticator.js";
 import { natsConfig, natsConfigFromEnv, serversForTransport, type NatsAuth, type NatsConfig, type NatsConfigInput } from "./config.js";
 import { bucketName, type BucketName } from "./values.js";
 import { failedPrecondition } from "./errors.js";

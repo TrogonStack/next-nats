@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { closeNats, connectNats, getNats } from "../../src/connection.js";
-import { UpstashError } from "../../src/kv/store.js";
+import { UpstashError } from "../../src/kv/errors.js";
 import { Redis } from "../../src/redis/index.js";
 
 const BUCKET = `nonatomic_${Math.random().toString(36).slice(2, 8)}`;

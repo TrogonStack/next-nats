@@ -1,4 +1,4 @@
-import { UpstashError } from "../kv/store.js";
+import { UpstashError } from "../kv/errors.js";
 import { deserialize, serializeValue, type KvRecord, type RecordKind } from "../kv/record.js";
 
 export { deserialize };

@@ -1,6 +1,7 @@
 import "server-only";
 import { globToRegExp, encodeKey } from "../kv/key.js";
-import { KvStore, UpstashError } from "../kv/store.js";
+import { UpstashError } from "../kv/errors.js";
+import { KvStore } from "../kv/store.js";
 import { Code } from "../errors.js";
 import type { Store } from "../kv/store.js";
 import { Transaction } from "../kv/transaction.js";

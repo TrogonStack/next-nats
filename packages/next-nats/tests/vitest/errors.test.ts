@@ -12,7 +12,7 @@ import {
   toSpecError,
   Visibility,
 } from "../../src/errors.js";
-import { KvError } from "../../src/kv/store.js";
+import { KvError } from "../../src/kv/errors.js";
 import { consoleLogger, getLogger, LogLevel, setLogger, warnThrottled, type Logger } from "../../src/logger.js";
 import { EndpointError, ServiceCallError } from "../../src/services/errors.js";
 import { ValidationError } from "../../src/services/schema.js";

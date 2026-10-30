@@ -1,6 +1,6 @@
 import { jetstream, type JetStreamClient } from "@nats-io/jetstream";
 import { wsconnect, type NatsConnection } from "@nats-io/nats-core";
-import { buildPortableAuthenticator } from "../auth.js";
+import { buildPortableAuthenticator } from "../authenticator.js";
 import { edgeNatsConfig, edgeNatsConfigFromEnv, type EdgeNatsConfig, type EdgeNatsConfigInput } from "./config.js";
 
 export interface EdgeNats {

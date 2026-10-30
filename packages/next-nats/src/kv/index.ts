@@ -4,7 +4,8 @@ import type { RedisConfigNodejs, ScanCommandOptions } from "../redis/types.js";
 
 export { decodeKey, encodeKey, globToRegExp } from "./key.js";
 export type { KvKey } from "./key.js";
-export { KvError, KvStore, UpstashError } from "./store.js";
+export { KvError, UpstashError } from "./errors.js";
+export { KvStore } from "./store.js";
 export type { KvRecord, KvStoreOptions } from "./store.js";
 
 async function* iterate<T>(
@@ -43,6 +44,6 @@ export function createClient(config: RedisConfigNodejs): VercelKV {
   return new VercelKV({ ...config });
 }
 
-export const kv: VercelKV = createClient({});
+export const kv: VercelKV = /* @__PURE__ */ createClient({});
 
 export default kv;

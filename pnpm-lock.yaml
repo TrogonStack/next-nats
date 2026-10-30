@@ -118,6 +118,9 @@ importers:
       '@vercel/queue':
         specifier: 0.10.0
         version: 0.10.0
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
       fast-check:
         specifier: 4.10.2
         version: 4.10.2
