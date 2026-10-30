@@ -35,11 +35,4 @@ export default withNats({ cacheComponents: true }, { cache: true });
 
 ## Documentation
 
-- [Tutorials](./docs/tutorials/README.md)
-- [How-tos](./docs/how-tos/README.md)
-- [References](./docs/references/README.md)
-- [Explanations](./docs/explanations/README.md)
-
-## Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md).
+See the [documentation](./docs/README.md).

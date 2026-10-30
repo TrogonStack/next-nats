@@ -59,10 +59,7 @@ await kv.set("greeting", "hello");
 
 ## Documentation
 
-- [Getting started](https://github.com/TrogonStack/next-nats/blob/main/docs/tutorials/getting-started.md)
-- [How-tos](https://github.com/TrogonStack/next-nats/blob/main/docs/how-tos/README.md)
-- [Configuration](https://github.com/TrogonStack/next-nats/blob/main/docs/references/configuration.md)
-- [References](https://github.com/TrogonStack/next-nats/blob/main/docs/references/README.md)
+See the [documentation](https://github.com/TrogonStack/next-nats/blob/main/docs/README.md).
 
 ## License
 
