@@ -1,0 +1,58 @@
+# Changelog
+
+## 0.1.0 (2026-10-30)
+
+
+### Features
+
+* Add connection, publish, consumer, health and next config helpers ([ab031d7](https://github.com/TrogonStack/next-nats/commit/ab031d7a7e763505c240e8a27aa5950247e64823))
+* **blob:** Add Vercel Blob compatible API on NATS object store ([e1905ab](https://github.com/TrogonStack/next-nats/commit/e1905ab5cd076d7dd51181133cd7571c93aa4a08))
+* **blob:** Match the @vercel/blob server surface so imports can swap ([28de87d](https://github.com/TrogonStack/next-nats/commit/28de87de3712e3755175ef56401cfa807f419ad3))
+* **cache:** Add NATS backed use cache and incremental cache handlers ([01ba00d](https://github.com/TrogonStack/next-nats/commit/01ba00d845ef618eff980a428ec7de0078fd63da))
+* Close the platform gaps so apps run on capped NATS accounts and the edge runtime ([56fea60](https://github.com/TrogonStack/next-nats/commit/56fea60efebf0c80f86fabe052dfb971b951e6e0))
+* **config:** Accept secrets in the Secret Value Syntax ([b28a9ce](https://github.com/TrogonStack/next-nats/commit/b28a9ce45d71902d7b2978c7bfe2ddaf95149f55))
+* **cron:** Fire each schedule tick exactly once across replicas ([36bd35a](https://github.com/TrogonStack/next-nats/commit/36bd35a58d92b627f1335bac4d5114ea3086c930))
+* **cron:** Run vercel.json crons self-hosted so Vercel cron route handlers work unchanged ([589c3ad](https://github.com/TrogonStack/next-nats/commit/589c3ada9a018ea96274aeb0ea041b3153e5fdf0))
+* **edge-config:** Add watch-backed edge config client ([9af5511](https://github.com/TrogonStack/next-nats/commit/9af551199adb2e03d4175d036f8f692cae5f13b4))
+* **edge-config:** Match @vercel/edge-config 1.5.1 so imports swap without code changes ([d2b6e77](https://github.com/TrogonStack/next-nats/commit/d2b6e7797f871a6beb39e4844fe66553b92156bc))
+* **kv:** Add Vercel KV compatible client on NATS KV ([cfdde99](https://github.com/TrogonStack/next-nats/commit/cfdde99ff24ebfd3b2ac4888349e6271316327ba))
+* **next:** Alias Vercel specifiers and embed vercel.json so one codebase runs on both targets ([76e420c](https://github.com/TrogonStack/next-nats/commit/76e420c853ba7e5ed28389d2a29b89f7a991a9be))
+* **next:** Wire cache handlers through withNats ([5b7549a](https://github.com/TrogonStack/next-nats/commit/5b7549aaa9fe545feeda6ed81ab4ee9b1a5013e8))
+* **queue:** Add Vercel Queues style send and consumer groups on JetStream ([7f0f1c7](https://github.com/TrogonStack/next-nats/commit/7f0f1c7de12d91f558eca2edc263c33bd4415a5e))
+* **queue:** Mirror the @vercel/queue API so route handlers run unchanged on NATS ([e283d09](https://github.com/TrogonStack/next-nats/commit/e283d092a397c38212c3c085e965085861647a28))
+* **ratelimit:** Add KV backed rate limiter and demo pages ([2ffe550](https://github.com/TrogonStack/next-nats/commit/2ffe550d0ea9d96215656b9bf9db2e3295651880))
+* **ratelimit:** Let apps written for Upstash Ratelimit run on NATS by swapping the import ([9b7794f](https://github.com/TrogonStack/next-nats/commit/9b7794f930dbe4ea8f8d33d937f0b52c7d677ed0))
+* **realtime:** Add SSE helpers over subjects and ordered consumers ([dc624c7](https://github.com/TrogonStack/next-nats/commit/dc624c76321d25bb99d0855122861c69b0f8e559))
+* **redis:** Let apps written for Upstash Redis and Vercel KV run on NATS by swapping the import ([0dc0fd3](https://github.com/TrogonStack/next-nats/commit/0dc0fd3d5aeb0aec09f44be04f9f86d681437d8b))
+* **redis:** Make multi and multi-key commands all-or-nothing so concurrent writers cannot leave partial state ([95b5c1d](https://github.com/TrogonStack/next-nats/commit/95b5c1d9e7beb4f4b588f9fdf162f6531f835ae0))
+* **services:** Add micro service definitions and typed client ([61c5774](https://github.com/TrogonStack/next-nats/commit/61c5774e6856c1137e84caa3c6b6a33ab727462f))
+
+
+### Bug Fixes
+
+* **blob:** Keep error name as Error so name comparisons match @vercel/blob ([d9d8391](https://github.com/TrogonStack/next-nats/commit/d9d83911cabb69a872cf7dca32db243994955c18))
+* **blob:** Keep signed blob URLs valid across replicas in production ([493e079](https://github.com/TrogonStack/next-nats/commit/493e079bb23911026d0b346fe0760bd64efaa106))
+* **blob:** Match @vercel/blob validation, progress, get and client token behavior ([f62829e](https://github.com/TrogonStack/next-nats/commit/f62829eb9d1580f50513c5876cbcd097c33a076a))
+* **blob:** Reject a conditional delete when the blob changed after its etag was checked ([b564ac6](https://github.com/TrogonStack/next-nats/commit/b564ac6808093ab5cca40ddad5712c211da7474e))
+* **cache:** Guard the public cache barrel against client imports ([55cad41](https://github.com/TrogonStack/next-nats/commit/55cad410b57c2d243b4195b787bb2f11e046a4db))
+* **connection:** Drop server-only import so cache handlers load under plain node ([55f8dba](https://github.com/TrogonStack/next-nats/commit/55f8dbaa1d3a7c1b0e5a5068b542bf915aed429b))
+* **cron:** Let routes tell which vercel.json schedule fired ([89a7384](https://github.com/TrogonStack/next-nats/commit/89a7384166881e1a5c5553ae25c13d12359f25c5))
+* **cron:** Reject schedules and cron counts that Vercel rejects at deploy time ([94327e6](https://github.com/TrogonStack/next-nats/commit/94327e65646e2593a315ab4986bc6e55a4cecd76))
+* **cron:** Stop a job whose consumer was still starting so shutdown cannot hang ([f203156](https://github.com/TrogonStack/next-nats/commit/f2031568043db4b5324a906e42d83d368775a113))
+* **edge-config:** Commit item updates in one revision-checked batch so partial writes cannot happen ([8af9f11](https://github.com/TrogonStack/next-nats/commit/8af9f114b3a86d1e8a80b1b3716be8d6f8616214))
+* **edge-config:** Match the real connection string parser, argument handling and all-or-nothing writes ([759599e](https://github.com/TrogonStack/next-nats/commit/759599eb6a09ebfd08984d7c199a0c507b2411e0))
+* Keep unused NATS clients out of app bundles so subpath imports stay cheap ([5b8cdd8](https://github.com/TrogonStack/next-nats/commit/5b8cdd8e7148abaf95d4a0ad09cc4e10c447d1f3))
+* **kv:** Abort transactions whose read-only keys changed so no write skew commits ([0eee9b0](https://github.com/TrogonStack/next-nats/commit/0eee9b0b587349518e85a0778b689d2eabaa7b72))
+* **kv:** Surface when transactions lose atomicity ([b78ec53](https://github.com/TrogonStack/next-nats/commit/b78ec534d488716c161e10c90f52c541e5143576))
+* **queue:** Accept a delay longer than retention as the documented API does ([09b46e1](https://github.com/TrogonStack/next-nats/commit/09b46e18a324156ff1177d0c040300934fd21af0))
+* **queue:** Honor maxDeliveries and keep the first delivery count at one after an initial delay ([362d64c](https://github.com/TrogonStack/next-nats/commit/362d64c3e05d7770456f86b10340630d429725d0))
+* **queue:** Let the duplicate window fit servers that cap it, such as Synadia Cloud ([f01ab33](https://github.com/TrogonStack/next-nats/commit/f01ab33227e35afbbec387479e7be870cdfbb31e))
+* **ratelimit:** Align dynamic limit storage, messages and blockUntilReady polling with Upstash ([2ccdfcb](https://github.com/TrogonStack/next-nats/commit/2ccdfcb4c3e48853413f832218e49a36089133ba))
+* **ratelimit:** Count requests like the real algorithms so remaining and reset agree for the same sequence ([adc2ca0](https://github.com/TrogonStack/next-nats/commit/adc2ca001f7f84939649034ff51ffa3acdaa99b5))
+* **ratelimit:** Measure the window span from when the request was made so a window boundary cannot flip it ([374d462](https://github.com/TrogonStack/next-nats/commit/374d462ec1fd16cbc72ec72239d1e045449e63ec))
+* **ratelimit:** Parse window sizes and report invalid ones the way Upstash does ([3853105](https://github.com/TrogonStack/next-nats/commit/3853105fc459cf8277aa31fd0f640929662695ce))
+* **ratelimit:** Stop the window parsing differential from flaking at window boundaries ([4434044](https://github.com/TrogonStack/next-nats/commit/4434044df2d84801ca9f093afc94f1c3803c4441))
+* **redis:** Abort MULTI on infrastructure errors so a lost connection cannot commit half a transaction ([ecffce7](https://github.com/TrogonStack/next-nats/commit/ecffce753da6b6fbc25c009d0ae2c27c6829fb50))
+* **redis:** Fail multi() and multi-key commands when atomic batches are unavailable instead of dropping atomicity ([e9d6f25](https://github.com/TrogonStack/next-nats/commit/e9d6f25fb675fab59a0fec97e55143eb92e2c0ae))
+* **redis:** Reject invalid expiry arguments and return an empty array from spop on a missing key as Redis does ([68da4cc](https://github.com/TrogonStack/next-nats/commit/68da4ccd9b8a7cd417237335026e31ed04622ea9))
+* **redis:** Return the same replies and errors as the Upstash client for commands and pipelines ([b0bc015](https://github.com/TrogonStack/next-nats/commit/b0bc01511ab4e41f159cf730e34660345c231ec5))
