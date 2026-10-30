@@ -36,10 +36,5 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - run: pnpm --filter @trogonstack/next-nats build
-      - run: |
-          cp LICENSE packages/next-nats/LICENSE
-          sed -e "s#](\./#](https://github.com/${GITHUB_REPOSITORY}/blob/main/#g" \
-            -e "s#src=\"assets/#src=\"https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/assets/#g" \
-            README.md > packages/next-nats/README.md
       - run: npm publish
         working-directory: packages/next-nats
