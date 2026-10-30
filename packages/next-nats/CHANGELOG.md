@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1](https://github.com/TrogonStack/next-nats/compare/v0.1.0...v0.1.1) (2026-10-30)
+
+
+### Bug Fixes
+
+* **ratelimit:** Keep the deadline differential inside one window ([3fde4d4](https://github.com/TrogonStack/next-nats/commit/3fde4d422454a47890bc061f5968d336f30953a2))
+* **ratelimit:** Start the deadline differential in a window that outlives the timeout so a boundary cannot flip it ([b7510e8](https://github.com/TrogonStack/next-nats/commit/b7510e875d4542f9350e15171c3b9a3d73a4ea05))
+
 ## 0.1.0 (2026-10-30)
 
 
