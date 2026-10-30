@@ -13,7 +13,7 @@ mise run install
 mise run compose:up
 ```
 
-The tasks connect to `nats://nats.next-nats.orb.local:4222`, the OrbStack hostname of the compose service. Set `NATS_URL=nats://localhost:4222` when running Docker without OrbStack.
+The tasks connect to `nats://nats.next-nats.orb.local:4222`, the OrbStack hostname of the compose service. Without OrbStack, add `devops/docker/compose/compose.ci.yaml` to `COMPOSE_FILE` to publish the services on `127.0.0.1`, and point the tests at them with the variables in the `env` block of `.github/workflows/ci.yml`.
 
 ## Checks
 

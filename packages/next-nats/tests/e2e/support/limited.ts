@@ -1,21 +1,17 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { connect, type NatsConnection } from "@nats-io/transport-node";
 import { jetstreamManager, type JetStreamManager } from "@nats-io/jetstream";
-import { composeProject, REPOSITORY_ROOT } from "./env.js";
+import { compose as composeWith } from "./compose.js";
+import { composeProject } from "./env.js";
 import { waitUntil } from "./server.js";
-
-const run = promisify(execFile);
-const COMPOSE_FILE = `${REPOSITORY_ROOT}devops/docker/compose/compose.yaml`;
 
 export const LIMITED_USER = "capped";
 export const LIMITED_PASSWORD = "capped";
 export const LIMITED_MAX_STREAMS = 5;
 export const LIMITED_STREAM_MAX_BYTES = "128MiB";
 
-export const limitedUrl = () => `nats://nats-limited.${composeProject()}.orb.local:4222`;
+export const limitedUrl = () => process.env.NATS_LIMITED_URL ?? `nats://nats-limited.${composeProject()}.orb.local:4222`;
 
-const compose = (...args: string[]) => run("docker", ["compose", "-p", composeProject(), "-f", COMPOSE_FILE, "--profile", "limits", ...args], { cwd: REPOSITORY_ROOT });
+const compose = (...args: string[]) => composeWith("--profile", "limits", ...args);
 
 export const limitedEnv = (): Record<string, string> => ({
   NATS_URL: limitedUrl(),

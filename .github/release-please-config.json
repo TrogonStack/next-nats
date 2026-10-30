@@ -1,0 +1,39 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "6f89aa8a9992a1d204dfbc09775047940a3256cd",
+  "changelog-sections": [
+    {
+      "type": "feat",
+      "section": "Features",
+      "hidden": false
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes",
+      "hidden": false
+    }
+  ],
+  "packages": {
+    "packages/next-nats": {
+      "component": "@trogonstack/next-nats",
+      "initial-version": "0.1.0"
+    }
+  },
+  "plugins": [
+    {
+      "type": "sentence-case"
+    }
+  ],
+  "include-v-in-tag": true,
+  "include-component-in-tag": false,
+  "pull-request-title-pattern": "chore${scope}: release @trogonstack/next-nats v${version}",
+  "release-type": "node",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "draft": false,
+  "draft-pull-request": false,
+  "prerelease": false,
+  "pull-request-header": "An automated release has been created for you.",
+  "separate-pull-requests": true,
+  "signoff": "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+}
