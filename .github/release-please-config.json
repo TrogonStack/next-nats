@@ -29,11 +29,11 @@
   "pull-request-title-pattern": "chore${scope}: release @trogonstack/next-nats v${version}",
   "release-type": "node",
   "bump-minor-pre-major": true,
-  "bump-patch-for-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": false,
   "draft": false,
   "draft-pull-request": false,
   "prerelease": false,
   "pull-request-header": "An automated release has been created for you.",
   "separate-pull-requests": true,
-  "signoff": "Straw Hat Team Bot <61149376+sht-bot@users.noreply.github.com>"
+  "signoff": "SHT Bot <61149376+sht-bot@users.noreply.github.com>"
 }
