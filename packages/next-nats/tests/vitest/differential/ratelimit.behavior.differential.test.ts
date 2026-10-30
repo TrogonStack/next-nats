@@ -108,6 +108,8 @@ describe.skipIf(!available)("ratelimit behavior differential against @upstash/ra
       const observe = async (lib: Lib) => {
         await pair.reset();
         const rl = build(lib, (l) => l.fixedWindow(1, "10 s"));
+        const leftInWindow = 10_000 - (Date.now() % 10_000);
+        if (leftInWindow < 1500) await sleep(leftInWindow);
         await (await rl.limit("b")).pending;
         const started = Date.now();
         const res = await rl.blockUntilReady("b", 400);
