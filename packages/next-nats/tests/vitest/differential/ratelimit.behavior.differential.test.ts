@@ -46,18 +46,35 @@ describe.skipIf(!available)("ratelimit behavior differential against @upstash/ra
   }
 
   describe("window size parsing", () => {
+    const firstLimit = (lib: Lib, window: string) => async () => {
+      const rl = build(lib, (l) => l.fixedWindow(2, window as "1 s"));
+      const requestedAt = Date.now();
+      const first = await rl.limit("w");
+      return { success: first.success, remaining: first.remaining, span: first.reset - requestedAt > 0 };
+    };
+
+    it("observes the same span wherever in the window the first request lands", async () => {
+      const window = 1500;
+      const boundary = (Math.floor(Date.now() / window) + 10) * window;
+      const observeFrom = async (start: number) => {
+        let now = start;
+        const clock = vi.spyOn(Date, "now").mockImplementation(() => now++);
+        try {
+          return await firstLimit(UpstashRatelimit, "1.5 s")();
+        } finally {
+          clock.mockRestore();
+        }
+      };
+      expect(await observeFrom(boundary - 1)).toEqual(await observeFrom(boundary + window * 5 + window / 2));
+    });
+
     const cases = ["abc", "0 s", "0.0004 ms", "1.5 s", "10s", "2 h", "1 w", "", "5 minutes", "-1 s", ".5 s"];
     for (const window of cases) {
       it(`fixedWindow(2, ${JSON.stringify(window)})`, async () => {
-        const make = (lib: Lib) => async () => {
-          const rl = build(lib, (l) => l.fixedWindow(2, window as "1 s"));
-          const first = await rl.limit("w");
-          return { success: first.success, remaining: first.remaining, span: first.reset - Date.now() > 0 };
-        };
-        const real = await thrown(make(UpstashRatelimit));
-        const ours = await thrown(make(Ratelimit));
+        const real = await thrown(firstLimit(UpstashRatelimit, window));
+        const ours = await thrown(firstLimit(Ratelimit, window));
         expect(ours).toEqual(real);
-        if (real === undefined) expect(await make(Ratelimit)()).toEqual(await make(UpstashRatelimit)());
+        if (real === undefined) expect(await firstLimit(Ratelimit, window)()).toEqual(await firstLimit(UpstashRatelimit, window)());
       });
     }
   });
