@@ -104,23 +104,40 @@ describe.skipIf(!available)("ratelimit behavior differential against @upstash/ra
       for (const { elapsed } of [real, ours]) expect(elapsed).toBeLessThan(1500);
     });
 
-    it("gives up at the deadline when the window outlives the timeout", async () => {
+    describe("when the window outlives the timeout", () => {
       const observe = async (lib: Lib) => {
         await pair.reset();
         const rl = build(lib, (l) => l.fixedWindow(1, "10 s"));
+        const leftInWindow = 10_000 - (Date.now() % 10_000);
+        if (leftInWindow < 1500) await sleep(leftInWindow);
         await (await rl.limit("b")).pending;
         const started = Date.now();
         const res = await rl.blockUntilReady("b", 400);
         return { success: res.success, remaining: res.remaining, elapsed: Date.now() - started };
       };
-      const real = await observe(UpstashRatelimit);
-      const ours = await observe(Ratelimit);
-      expect({ success: ours.success, remaining: ours.remaining }).toEqual({ success: real.success, remaining: real.remaining });
-      expect(real.success).toBe(false);
-      for (const { elapsed } of [real, ours]) {
-        expect(elapsed).toBeGreaterThanOrEqual(390);
-        expect(elapsed).toBeLessThan(1500);
-      }
+
+      it("gives up at the deadline", async () => {
+        const real = await observe(UpstashRatelimit);
+        const ours = await observe(Ratelimit);
+        expect({ success: ours.success, remaining: ours.remaining }).toEqual({ success: real.success, remaining: real.remaining });
+        expect(real.success).toBe(false);
+        for (const { elapsed } of [real, ours]) {
+          expect(elapsed).toBeGreaterThanOrEqual(390);
+          expect(elapsed).toBeLessThan(1500);
+        }
+      });
+
+      it("gives up at the deadline even when the first request lands just before a window boundary", async () => {
+        const realNow = Date.now.bind(Date);
+        const window = 10_000;
+        const skew = window - 50 - (realNow() % window);
+        const clock = vi.spyOn(Date, "now").mockImplementation(() => realNow() + skew);
+        try {
+          expect((await observe(UpstashRatelimit)).success).toBe(false);
+        } finally {
+          clock.mockRestore();
+        }
+      });
     });
 
     it("polls every 100 ms when the deadline has already passed", async () => {
