@@ -164,7 +164,8 @@ function jetStreamOptions(config: NatsConfig): JetStreamOptions {
 }
 
 export function buildConnectionOptions(config: NatsConfig): NodeConnectionOptions {
-  const tls = config.tls
+  // wsconnect() rejects a tls option: over WebSocket the wss:// scheme decides encryption.
+  const tls = config.tls && config.transport !== "ws"
     ? {
         ...(config.tls.caFile && { caFile: config.tls.caFile }),
         ...(config.tls.certFile && { certFile: config.tls.certFile }),
@@ -177,7 +178,7 @@ export function buildConnectionOptions(config: NatsConfig): NodeConnectionOption
     servers: serversForTransport(config),
     name: config.name,
     authenticator: buildAuthenticator(config.auth),
-    tls,
+    ...(tls && { tls }),
     timeout: config.timeout,
     maxReconnectAttempts: config.maxReconnectAttempts,
     reconnectTimeWait: config.reconnectTimeWait,
