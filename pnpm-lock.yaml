@@ -67,28 +67,28 @@ importers:
   packages/next-nats:
     dependencies:
       '@nats-io/jetstream':
-        specifier: 3.5.0
+        specifier: ^3.5.0
         version: 3.5.0
       '@nats-io/kv':
-        specifier: 3.5.0
+        specifier: ^3.5.0
         version: 3.5.0
       '@nats-io/nats-core':
-        specifier: 3.5.0
+        specifier: ^3.5.0
         version: 3.5.0
       '@nats-io/obj':
-        specifier: 3.5.0
+        specifier: ^3.5.0
         version: 3.5.0
       '@nats-io/services':
-        specifier: 3.5.0
+        specifier: ^3.5.0
         version: 3.5.0
       '@nats-io/transport-node':
-        specifier: 3.5.0
+        specifier: ^3.5.0
         version: 3.5.0
       '@synadia-ai/agent-service':
-        specifier: 0.6.0
+        specifier: ^0.6.0
         version: 0.6.0
       '@synadia-ai/agents':
-        specifier: 0.6.0
+        specifier: ^0.6.0
         version: 0.6.0
       cron-parser:
         specifier: ^5.10.2
@@ -478,10 +478,6 @@ packages:
   '@nats-io/nats-core@3.5.0':
     resolution: {integrity: sha512-iHsKhlzINdpL27pxvbHhBLRs4mnAKDfYrXMReBDNqvhKb/yVxz+Vz2rXujBAUiMsfOXFzixUK4Uu/qNnDRjZvA==}
     engines: {node: '>= 22'}
-
-  '@nats-io/nkeys@2.0.3':
-    resolution: {integrity: sha512-JVt56GuE6Z89KUkI4TXUbSI9fmIfAmk6PMPknijmuL72GcD+UgIomTcRWiNvvJKxA01sBbmIPStqJs5cMRBC3A==}
-    engines: {node: '>=18.0.0'}
 
   '@nats-io/nkeys@2.1.0':
     resolution: {integrity: sha512-vLMgwfPouG2Utp3hHUfdmMVEGEQ202tLES/pOAOfTJR5hwWGymm2mKuo3UMYv9kNw7awpcTBfEAljFqZcFm1lA==}
@@ -1476,10 +1472,6 @@ snapshots:
       '@nats-io/nkeys': 2.1.0
       '@nats-io/nuid': 3.1.0
 
-  '@nats-io/nkeys@2.0.3':
-    dependencies:
-      tweetnacl: 1.0.3
-
   '@nats-io/nkeys@2.1.0':
     dependencies:
       tweetnacl: 1.0.3
@@ -1616,7 +1608,7 @@ snapshots:
   '@synadia-ai/agents@0.6.0':
     dependencies:
       '@nats-io/nats-core': 3.5.0
-      '@nats-io/nkeys': 2.0.3
+      '@nats-io/nkeys': 2.1.0
       '@nats-io/services': 3.5.0
       '@nats-io/transport-node': 3.5.0
 
