@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/TrogonStack/next-nats/compare/v0.1.1...v0.2.0) (2026-11-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* **deps:** upgrade nats.js to 3.5.0 ([#13](https://github.com/TrogonStack/next-nats/issues/13))
+
+### Bug Fixes
+
+* **deps:** Upgrade nats.js to 3.5.0 ([#13](https://github.com/TrogonStack/next-nats/issues/13)) ([af3405e](https://github.com/TrogonStack/next-nats/commit/af3405ea426432ba05d98cfd0d6af95ae5d49e9e))
+
 ## [0.1.1](https://github.com/TrogonStack/next-nats/compare/v0.1.0...v0.1.1) (2026-10-30)
 
 
