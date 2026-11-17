@@ -12,6 +12,9 @@
     "access": "public"
   },
   "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
   "files": [
     "dist"
   ],
@@ -115,12 +118,12 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
-    "@nats-io/jetstream": "3.4.0",
-    "@nats-io/kv": "3.4.0",
-    "@nats-io/nats-core": "3.4.0",
-    "@nats-io/obj": "3.4.0",
-    "@nats-io/services": "3.4.0",
-    "@nats-io/transport-node": "3.4.0",
+    "@nats-io/jetstream": "3.5.0",
+    "@nats-io/kv": "3.5.0",
+    "@nats-io/nats-core": "3.5.0",
+    "@nats-io/obj": "3.5.0",
+    "@nats-io/services": "3.5.0",
+    "@nats-io/transport-node": "3.5.0",
     "@synadia-ai/agent-service": "0.6.0",
     "@synadia-ai/agents": "0.6.0",
     "cron-parser": "^5.10.2",
