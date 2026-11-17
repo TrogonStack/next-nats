@@ -156,8 +156,12 @@ describe.each(SELF_HOSTED_VARIANTS)("%s next start", (variant) => {
       const range = await fetch(result.url, { headers: { range: "bytes=10-19" } });
       expect(range.status).toBe(206);
       expect(new Uint8Array(await range.arrayBuffer())).toEqual(payload.slice(10, 20));
+      expect(range.headers.get("content-range")).toBe("bytes 10-19/4096");
 
-      expect((await fetch(result.url, { method: "HEAD" })).headers.get("content-length")).toBe("4096");
+      // Next strips Content-Length from route handler responses since 16.4.5, so a HEAD reports no size here.
+      const head = await fetch(result.url, { method: "HEAD" });
+      expect(head.status).toBe(200);
+      expect(head.headers.get("etag")).toBe(download.headers.get("etag"));
       await waitUntil(() => server.logs().includes(`blob upload completed ${result.pathname}`), 10_000, "the upload completed callback");
 
       expect(stripTags(await text(server, "/blob"))).toContain(result.pathname);
