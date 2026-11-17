@@ -18,6 +18,7 @@ import {
   wsconnect,
   type Authenticator,
   type NatsConnection,
+  type WsConnectionOptions,
 } from "@nats-io/nats-core";
 import type { Secret } from "./secret.js";
 import { Objm } from "@nats-io/obj";
@@ -26,7 +27,7 @@ import { decodeCreds } from "./auth.js";
 import { buildPortableAuthenticator, withToken } from "./authenticator.js";
 import { natsConfig, natsConfigFromEnv, serversForTransport, type NatsAuth, type NatsConfig, type NatsConfigInput } from "./config.js";
 import { bucketName, type BucketName } from "./values.js";
-import { failedPrecondition } from "./errors.js";
+import { failedPrecondition, invalidArgument } from "./errors.js";
 import { assessExpiry, CredentialsExpiredError, jwtExpiry, jwtFromCreds } from "./jwt.js";
 import { emitLifecycle } from "./lifecycle.js";
 import { getLogger } from "./logger.js";
@@ -163,8 +164,25 @@ function jetStreamOptions(config: NatsConfig): JetStreamOptions {
   };
 }
 
-export function buildConnectionOptions(config: NatsConfig): NodeConnectionOptions {
-  const tls = config.tls
+// A WebSocket negotiates TLS on its own, so wsconnect() rejects a tls option. Requiring TLS becomes
+// requiring wss, and settings a WebSocket cannot apply fail here rather than being dropped.
+function wsTlsOptions(tls: NatsConfig["tls"]): Pick<WsConnectionOptions, "wssOnly"> {
+  if (!tls) return {};
+  const unsupported: string[] = (["caFile", "certFile", "keyFile"] as const).filter((key) => tls[key]);
+  if (tls.rejectUnauthorized === false) unsupported.push("rejectUnauthorized");
+  if (unsupported.length > 0) {
+    throw invalidArgument(
+      "next-nats.connection",
+      "TLS_UNSUPPORTED_OVER_WEBSOCKET",
+      `tls ${unsupported.join(", ")} cannot be applied to a WebSocket connection; use transport "tcp", or a server certificate the runtime already trusts`,
+    );
+  }
+  return { wssOnly: true };
+}
+
+export function buildConnectionOptions(config: NatsConfig): NodeConnectionOptions & Pick<WsConnectionOptions, "wssOnly"> {
+  const ws = config.transport === "ws";
+  const tls = config.tls && !ws
     ? {
         ...(config.tls.caFile && { caFile: config.tls.caFile }),
         ...(config.tls.certFile && { certFile: config.tls.certFile }),
@@ -177,7 +195,8 @@ export function buildConnectionOptions(config: NatsConfig): NodeConnectionOption
     servers: serversForTransport(config),
     name: config.name,
     authenticator: buildAuthenticator(config.auth),
-    tls,
+    ...(tls && { tls }),
+    ...(ws && wsTlsOptions(config.tls)),
     timeout: config.timeout,
     maxReconnectAttempts: config.maxReconnectAttempts,
     reconnectTimeWait: config.reconnectTimeWait,
