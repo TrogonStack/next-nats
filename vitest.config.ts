@@ -27,8 +27,8 @@ export default defineConfig({
           ...shared,
           name: "shared-redis",
           include: [sharedRedis],
-          pool: "forks",
-          poolOptions: { forks: { singleFork: true } },
+          // These files share one Redis and one key space, so they must not run concurrently.
+          fileParallelism: false,
         },
       },
     ],
