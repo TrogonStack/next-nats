@@ -40,9 +40,6 @@ async function bundleSize(subpath: Subpath, name: string, client = false): Promi
   return result.outputFiles[0]!.contents.length;
 }
 
-// TODO: the @nats-io/* packages do not declare "sideEffects", so any module that reaches them
-// keeps the whole client (about 145K minified). Upstream a "sideEffects": false to nats.js and
-// tighten these budgets for NATS-backed exports once it lands.
 describe("tree-shaking", () => {
   it.each<[Subpath, string]>([
     [".", "ByteSize"],
@@ -64,6 +61,26 @@ describe("tree-shaking", () => {
     ["./next", "INCREMENTAL_HANDLER_PATH"],
   ])("%s { %s } leaves the NATS client out of the bundle", async (subpath, name) => {
     expect(await bundleSize(subpath, name)).toBeLessThan(BUDGET);
+  });
+
+  // Since nats.js 3.5.0 the @nats-io/* packages tree-shake, so a NATS-backed export only keeps the
+  // client pieces it reaches. Budgets sit about 10% above the measured size and well below the
+  // whole-package size, so a regression to keeping every @nats-io module fails here.
+  it.each<[Subpath, string, number]>([
+    ["./edge", "getEdgeNats", 192],
+    ["./edge", "corePublish", 196],
+    ["./edge", "edgeRequest", 198],
+    ["./edge", "edgeSubscribe", 194],
+    ["./edge", "jsPublish", 198],
+    ["./edge", "edgeKv", 212],
+    ["./kv", "KvStore", 230],
+    ["./kv", "kv", 261],
+    ["./redis", "Redis", 261],
+    ["./queue", "send", 224],
+    ["./blob", "put", 254],
+    ["./ratelimit", "Ratelimit", 269],
+  ])("%s { %s } stays under %iK", async (subpath, name, kib) => {
+    expect(await bundleSize(subpath, name)).toBeLessThan(kib * 1024);
   });
 
   it("./blob/client stays free of NATS for the browser", async () => {
